@@ -30,6 +30,8 @@ function normalizeWith(input: string, yoAsE: boolean): string {
   let s = (input || '').toLowerCase();
   if (yoAsE) s = s.replace(/ё/g, 'е');
   return toLatin(s)
+    // «х» транслитерируется в «h», а в латинских названиях пишут «kh» (Bukhara, Khorezm).
+    .replace(/kh/g, 'h')
     .replace(SEARCH_PUNCT_RE, '')
     .replace(/\s+/g, ' ')
     .trim();

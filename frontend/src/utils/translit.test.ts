@@ -33,6 +33,11 @@ const mediamax = buildClientSearchHaystack({ companyName: 'медиамакс', 
 const mprint = buildClientSearchHaystack({ companyName: 'М-Принт', phone: '(90) 442-99-97' });
 
 describe('matchesSearch', () => {
+  it('«х» находит латинское «kh»: бухара → Bukhara', () => {
+    expect(matchesSearch('Bukhara Media Print', 'бухара')).toBe(true);
+    expect(matchesSearch('Хорезм', 'khorezm')).toBe(true);
+  });
+
   it('«Баез» и «Баёз» находят обе карточки', () => {
     for (const q of ['Баез', 'Баёз', 'баез']) {
       expect(matchesSearch(baez, q)).toBe(true);

@@ -591,6 +591,10 @@ export default function Layout() {
         key: '/finance/cashbox',
         icon: <DollarOutlined />,
         label: <Link to="/finance/cashbox">Касса</Link>,
+      }, {
+        key: '/finance/cashbox-v2',
+        icon: <DollarOutlined />,
+        label: <Link to="/finance/cashbox-v2">Касса 2.0</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER')

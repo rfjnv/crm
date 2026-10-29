@@ -66,6 +66,7 @@ const TasksPage = lazy(() => import('./pages/TasksPage'));
 const ContractsPage = lazy(() => import('./pages/ContractsPage'));
 const ArchivedDealsPage = lazy(() => import('./pages/ArchivedDealsPage'));
 const CashboxPage = lazy(() => import('./pages/CashboxPage'));
+const CashboxV2Page = lazy(() => import('./pages/CashboxV2Page'));
 const CompanyBalancePage = lazy(() => import('./pages/CompanyBalancePage'));
 const ContractDetailPage = lazy(() => import('./pages/ContractDetailPage'));
 const PowerOfAttorneyPage = lazy(() => import('./pages/PowerOfAttorneyPage'));
@@ -298,6 +299,7 @@ export default function App() {
                       с ней по поведению. Ссылки продолжают работать через редирект. */}
                   <Route path="/finance/debts" element={<Navigate to="/finance/cashbox?tab=debtors" replace />} />
                   <Route path="/finance/cashbox" element={<MoneyAccessGuard><CashboxPage /></MoneyAccessGuard>} />
+                  <Route path="/finance/cashbox-v2" element={<MoneyAccessGuard><CashboxV2Page /></MoneyAccessGuard>} />
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER']} />}>
                   <Route path="/finance/balance" element={<MoneyAccessGuard><CompanyBalancePage /></MoneyAccessGuard>} />

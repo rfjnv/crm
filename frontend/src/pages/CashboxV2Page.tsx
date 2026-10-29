@@ -1,0 +1,1021 @@
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link, useSearchParams } from 'react-router-dom';
+import {
+  Table, Typography, Select, Card, Tag, Space, Segmented, Tabs, Input, Button, InputNumber,
+  message, Spin, DatePicker, List, Empty, Drawer, Badge, Alert, Checkbox, Radio, Popover, Modal, theme,
+} from 'antd';
+import { SearchOutlined, FilterOutlined, DownloadOutlined, PrinterOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
+import dayjs, { type Dayjs } from 'dayjs';
+import { cashboxV2Api, type ToPayDeal, type PaymentMethodCode } from '../api/cashboxV2.api';
+import { financeApi, type CashboxPayment } from '../api/finance.api';
+import { dealsApi } from '../api/deals.api';
+import { usersApi } from '../api/users.api';
+import DealStatusTag from '../components/DealStatusTag';
+import BackButton from '../components/BackButton';
+import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
+import { matchesSearch } from '../utils/translit';
+import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
+import { downloadCsv } from '../utils/csv';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { getFirstName } from '../lib/name-utils';
+import type { DealStatus } from '../types';
+
+/**
+ * «Касса 2.0».
+ *
+ * Старая касса: три вкладки, где «Активные» и «Долги» показывали одно и то же с разной
+ * группировкой, а приём денег шёл через цепочку из двух-трёх модалок и по одной сделке
+ * за раз. Здесь поиск всегда на виду, один список «К оплате» и боковая панель, которая
+ * раскладывает одну сумму на несколько сделок клиента.
+ */
+
+const METHODS: { value: PaymentMethodCode; label: string }[] = [
+  { value: 'CASH', label: 'Наличные' },
+  { value: 'TRANSFER', label: 'Перечисление' },
+  { value: 'CLICK', label: 'Click' },
+  { value: 'PAYME', label: 'Payme' },
+  { value: 'TERMINAL', label: 'Терминал' },
+  { value: 'QR', label: 'QR' },
+  { value: 'INSTALLMENT', label: 'Рассрочка' },
+];
+const methodLabel = (m: string | null | undefined) =>
+  METHODS.find((x) => x.value === m)?.label ?? (m || '—');
+
+const nonCashTag: Record<string, { color: string; label: string }> = {
+  CREDIT_TRANSFER: { color: 'purple', label: 'Зачёт переплаты' },
+  ADJUSTMENT: { color: 'default', label: 'Выравнивание' },
+};
+
+const LAST_METHOD_KEY = 'cashbox2.lastMethod';
+
+function readLastMethod(): PaymentMethodCode | undefined {
+  try {
+    const v = localStorage.getItem(LAST_METHOD_KEY);
+    return METHODS.some((m) => m.value === v) ? (v as PaymentMethodCode) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function saveLastMethod(m: PaymentMethodCode) {
+  try { localStorage.setItem(LAST_METHOD_KEY, m); } catch { /* приватный режим — не страшно */ }
+}
+
+function plural(n: number, one: string, few: string, many: string) {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+
+const daysAgo = (iso: string) => Math.max(0, dayjs().startOf('day').diff(dayjs(iso).startOf('day'), 'day'));
+
+/** Начало сегодняшних суток по Ташкенту (UTC+5) — независимо от пояса браузера. */
+function tashkentStartOfToday(): number {
+  const OFFSET = 5 * 3600_000;
+  const DAY = 86_400_000;
+  return Math.floor((Date.now() + OFFSET) / DAY) * DAY - OFFSET;
+}
+
+type JournalPeriod = 'day' | 'yesterday' | '7d' | '30d' | 'custom';
+
+/** Границы журнала. «7 дней» — это сегодня и шесть предыдущих, а не восемь календарных дней. */
+function periodRange(period: JournalPeriod, custom: [Dayjs, Dayjs] | null): { from: string; to?: string } | null {
+  const DAY = 86_400_000;
+  const today = tashkentStartOfToday();
+  if (period === 'day') return { from: new Date(today).toISOString() };
+  if (period === 'yesterday') return { from: new Date(today - DAY).toISOString(), to: new Date(today).toISOString() };
+  if (period === '7d') return { from: new Date(today - 6 * DAY).toISOString() };
+  if (period === '30d') return { from: new Date(today - 29 * DAY).toISOString() };
+  if (!custom) return null;
+  return { from: custom[0].startOf('day').toISOString(), to: custom[1].endOf('day').toISOString() };
+}
+
+interface ClientRow {
+  clientId: string;
+  clientName: string;
+  clientIsSvip: boolean;
+  debt: number;
+  dealsCount: number;
+  oldestCreatedAt: string;
+  managers: string[];
+}
+
+export default function CashboxV2Page() {
+  const isMobile = useIsMobile();
+  const { token: tk } = theme.useToken();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get('tab') === 'journal' ? 'journal' : 'topay';
+  const setTab = useCallback((key: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (key === 'topay') next.delete('tab'); else next.set('tab', key);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<'clients' | 'deals'>('clients');
+  const [managerId, setManagerId] = useState<string>();
+  const [panel, setPanel] = useState<{ clientId: string; dealId?: string } | null>(null);
+
+  const { data: toPay, isLoading: toPayLoading, error: toPayError } = useQuery({
+    queryKey: ['cashbox2-to-pay', managerId],
+    queryFn: () => cashboxV2Api.toPay(managerId ? { managerId } : undefined),
+    refetchInterval: 60_000,
+  });
+
+  const { data: users } = useQuery({ queryKey: ['users-list'], queryFn: () => usersApi.list() });
+
+  const managers = useMemo(() => (users ?? [])
+    .filter((u: { role: string; isActive: boolean }) =>
+      ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(u.role) && u.isActive)
+    .map((u: { id: string; fullName: string }) => ({ value: u.id, label: getFirstName(u.fullName) })), [users]);
+
+  const staff = useMemo(() => (users ?? [])
+    .filter((u: { isActive: boolean }) => u.isActive)
+    .map((u: { id: string; fullName: string }) => ({ value: u.id, label: u.fullName })), [users]);
+
+  const filteredDeals = useMemo(() => {
+    const deals = toPay?.deals ?? [];
+    const q = search.trim();
+    if (!q) return deals;
+    return deals.filter((d) =>
+      matchesSearch(d.clientName, q)
+      || matchesSearch(d.title, q)
+      || matchesSearch(d.contractNumber, q)
+      || matchesSearch(d.manager?.fullName, q));
+  }, [toPay, search]);
+
+  const clientRows = useMemo<ClientRow[]>(() => {
+    const map = new Map<string, ClientRow>();
+    for (const d of filteredDeals) {
+      let row = map.get(d.clientId);
+      if (!row) {
+        row = {
+          clientId: d.clientId,
+          clientName: d.clientName,
+          clientIsSvip: d.clientIsSvip,
+          debt: 0,
+          dealsCount: 0,
+          oldestCreatedAt: d.createdAt,
+          managers: [],
+        };
+        map.set(d.clientId, row);
+      }
+      row.debt += d.remaining;
+      row.dealsCount += 1;
+      if (d.createdAt < row.oldestCreatedAt) row.oldestCreatedAt = d.createdAt;
+      const m = getFirstName(d.manager?.fullName);
+      if (m && !row.managers.includes(m)) row.managers.push(m);
+    }
+    return [...map.values()].sort((a, b) => b.debt - a.debt);
+  }, [filteredDeals]);
+
+  const openClient = (clientId: string, dealId?: string) => setPanel({ clientId, dealId });
+
+  // Enter в поиске при единственном совпадении сразу открывает оплату.
+  const onSearchEnter = () => {
+    if (clientRows.length === 1) openClient(clientRows[0].clientId);
+  };
+
+  const clientColumns = [
+    {
+      title: 'Клиент',
+      key: 'client',
+      render: (_: unknown, r: ClientRow) => (
+        <ClientCompanyDisplay client={{ id: r.clientId, companyName: r.clientName, isSvip: r.clientIsSvip }} />
+      ),
+    },
+    {
+      title: 'Долг',
+      dataIndex: 'debt',
+      align: 'right' as const,
+      sorter: (a: ClientRow, b: ClientRow) => a.debt - b.debt,
+      render: (v: number) => <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>{formatUZS(v)}</Typography.Text>,
+    },
+    {
+      title: 'Сделок',
+      dataIndex: 'dealsCount',
+      align: 'center' as const,
+      width: 80,
+    },
+    {
+      title: 'Самый старый долг',
+      dataIndex: 'oldestCreatedAt',
+      width: 170,
+      sorter: (a: ClientRow, b: ClientRow) => a.oldestCreatedAt.localeCompare(b.oldestCreatedAt),
+      render: (v: string) => {
+        const days = daysAgo(v);
+        return (
+          <span>
+            {dayjs(v).format('DD.MM.YYYY')}
+            <Typography.Text type={days > 30 ? 'danger' : 'secondary'} style={{ fontSize: 12, marginLeft: 6 }}>
+              {days} дн.
+            </Typography.Text>
+          </span>
+        );
+      },
+    },
+    {
+      title: 'Менеджер',
+      dataIndex: 'managers',
+      width: 160,
+      render: (v: string[]) => v.join(', ') || '—',
+    },
+    {
+      title: '',
+      key: 'pay',
+      width: 110,
+      render: (_: unknown, r: ClientRow) => (
+        <Button type="primary" size="small" onClick={(e) => { e.stopPropagation(); openClient(r.clientId); }}>
+          Принять
+        </Button>
+      ),
+    },
+  ];
+
+  const dealColumns = [
+    {
+      title: 'Сделка',
+      dataIndex: 'title',
+      render: (v: string | null, r: ToPayDeal) => (
+        <div style={{ lineHeight: 1.3 }}>
+          <div>{v || r.dealId.slice(0, 8)}</div>
+          {r.contractNumber && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>договор №{r.contractNumber}</Typography.Text>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: 'Клиент',
+      key: 'client',
+      render: (_: unknown, r: ToPayDeal) => (
+        <ClientCompanyDisplay client={{ id: r.clientId, companyName: r.clientName, isSvip: r.clientIsSvip }} />
+      ),
+    },
+    {
+      title: 'Остаток',
+      dataIndex: 'remaining',
+      align: 'right' as const,
+      sorter: (a: ToPayDeal, b: ToPayDeal) => a.remaining - b.remaining,
+      render: (v: number, r: ToPayDeal) => (
+        <div style={{ lineHeight: 1.3, whiteSpace: 'nowrap' }}>
+          <Typography.Text strong>{formatUZS(v)}</Typography.Text>
+          <div>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>из {formatUZS(r.amount)}</Typography.Text>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Создана',
+      dataIndex: 'createdAt',
+      width: 120,
+      sorter: (a: ToPayDeal, b: ToPayDeal) => a.createdAt.localeCompare(b.createdAt),
+      render: (v: string) => dayjs(v).format('DD.MM.YYYY'),
+    },
+    {
+      title: 'Статус',
+      dataIndex: 'status',
+      width: 150,
+      render: (s: string) => <DealStatusTag status={s as DealStatus} />,
+    },
+    {
+      title: 'Менеджер',
+      key: 'manager',
+      width: 120,
+      render: (_: unknown, r: ToPayDeal) => getFirstName(r.manager?.fullName) || '—',
+    },
+    {
+      title: '',
+      key: 'pay',
+      width: 110,
+      render: (_: unknown, r: ToPayDeal) => (
+        <Button type="primary" size="small" onClick={(e) => { e.stopPropagation(); openClient(r.clientId, r.dealId); }}>
+          Принять
+        </Button>
+      ),
+    },
+  ];
+
+  const toPayTab = (
+    <>
+      <Space wrap style={{ marginBottom: 16, width: isMobile ? '100%' : undefined }}>
+        <Segmented
+          value={view}
+          onChange={(v) => setView(v as 'clients' | 'deals')}
+          options={[
+            { label: `По клиентам${toPay ? ` · ${clientRows.length}` : ''}`, value: 'clients' },
+            { label: `По сделкам${toPay ? ` · ${filteredDeals.length}` : ''}`, value: 'deals' },
+          ]}
+        />
+        <Select
+          allowClear
+          placeholder="Менеджер"
+          style={{ width: isMobile ? 160 : 200 }}
+          value={managerId}
+          onChange={setManagerId}
+          options={managers}
+        />
+      </Space>
+
+      {toPayError && (
+        <Alert type="error" showIcon style={{ marginBottom: 16 }} title="Не удалось загрузить список к оплате" />
+      )}
+
+      {isMobile ? (
+        view === 'clients' ? (
+          <List
+            loading={toPayLoading}
+            dataSource={clientRows}
+            locale={{ emptyText: <Empty description={search ? 'Ничего не найдено' : 'Долгов нет'} /> }}
+            pagination={{ pageSize: 20, size: 'small' }}
+            renderItem={(r) => (
+              <Card
+                size="small"
+                hoverable
+                style={{ marginBottom: 8 }}
+                styles={{ body: { padding: 12 } }}
+                onClick={() => openClient(r.clientId)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <ClientCompanyDisplay client={{ id: r.clientId, companyName: r.clientName, isSvip: r.clientIsSvip }} />
+                  <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>{formatUZS(r.debt)}</Typography.Text>
+                </div>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {r.dealsCount} {plural(r.dealsCount, 'сделка', 'сделки', 'сделок')}
+                  {' · '}старейшая {daysAgo(r.oldestCreatedAt)} дн.
+                  {r.managers.length > 0 && ` · ${r.managers.join(', ')}`}
+                </Typography.Text>
+              </Card>
+            )}
+          />
+        ) : (
+          <List
+            loading={toPayLoading}
+            dataSource={filteredDeals}
+            locale={{ emptyText: <Empty description={search ? 'Ничего не найдено' : 'Долгов нет'} /> }}
+            pagination={{ pageSize: 20, size: 'small' }}
+            renderItem={(r) => (
+              <Card
+                size="small"
+                hoverable
+                style={{ marginBottom: 8 }}
+                styles={{ body: { padding: 12 } }}
+                onClick={() => openClient(r.clientId, r.dealId)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontWeight: 600 }}>{r.title || r.dealId.slice(0, 8)}</span>
+                  <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>{formatUZS(r.remaining)}</Typography.Text>
+                </div>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {r.clientName} · {dayjs(r.createdAt).format('DD.MM.YYYY')}
+                </Typography.Text>
+              </Card>
+            )}
+          />
+        )
+      ) : view === 'clients' ? (
+        <Table
+          dataSource={clientRows}
+          columns={clientColumns}
+          rowKey="clientId"
+          loading={toPayLoading}
+          size="middle"
+          pagination={{ defaultPageSize: 30, showSizeChanger: true, pageSizeOptions: ['30', '50', '100'] }}
+          onRow={(r) => ({ onClick: () => openClient(r.clientId), style: { cursor: 'pointer' } })}
+          locale={{ emptyText: search ? 'Ничего не найдено' : 'Долгов нет' }}
+        />
+      ) : (
+        <Table
+          dataSource={filteredDeals}
+          columns={dealColumns}
+          rowKey="dealId"
+          loading={toPayLoading}
+          size="middle"
+          pagination={{ defaultPageSize: 30, showSizeChanger: true, pageSizeOptions: ['30', '50', '100'] }}
+          onRow={(r) => ({ onClick: () => openClient(r.clientId, r.dealId), style: { cursor: 'pointer' } })}
+          locale={{ emptyText: search ? 'Ничего не найдено' : 'Долгов нет' }}
+        />
+      )}
+    </>
+  );
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <BackButton fallback="/dashboard" />
+        <Typography.Title level={4} style={{ margin: 0 }}>Касса 2.0</Typography.Title>
+        <Tag color="blue">бета</Tag>
+        <Link to="/finance/cashbox" style={{ marginLeft: 'auto', fontSize: 13 }}>Старая касса</Link>
+      </div>
+
+      {/* Поиск всегда на виду: «пришёл человек с деньгами» начинается отсюда. */}
+      <Input
+        size="large"
+        allowClear
+        autoFocus={!isMobile}
+        prefix={<SearchOutlined style={{ color: tk.colorTextTertiary }} />}
+        placeholder="Клиент, сделка или № договора"
+        value={search}
+        onChange={(e) => { setSearch(e.target.value); if (tab !== 'topay') setTab('topay'); }}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) onSearchEnter(); }}
+        style={{ marginBottom: 12 }}
+      />
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 20px', marginBottom: 8, fontSize: 13, color: tk.colorTextSecondary }}>
+        <span>
+          Сегодня принято:{' '}
+          <Typography.Text strong style={{ color: tk.colorSuccess }}>{formatUZS(toPay?.totals.todayReceived ?? 0)}</Typography.Text>
+          {toPay ? ` · ${toPay.totals.todayCount} ${plural(toPay.totals.todayCount, 'оплата', 'оплаты', 'оплат')}` : ''}
+        </span>
+        <span>
+          К оплате:{' '}
+          <Typography.Text strong>{formatUZS(toPay?.totals.remaining ?? 0)}</Typography.Text>
+          {toPay ? ` · ${toPay.totals.clientCount} ${plural(toPay.totals.clientCount, 'клиент', 'клиента', 'клиентов')}` : ''}
+        </span>
+      </div>
+
+      <Tabs
+        activeKey={tab}
+        onChange={setTab}
+        items={[
+          { key: 'topay', label: 'К оплате', children: toPayTab },
+          { key: 'journal', label: 'Журнал', children: <JournalTab staff={staff} /> },
+        ]}
+      />
+
+      <PaymentPanel
+        target={panel}
+        staff={staff}
+        onClose={() => setPanel(null)}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────── Панель оплаты ───────────────────────────
+
+function PaymentPanel({
+  target,
+  staff,
+  onClose,
+}: {
+  target: { clientId: string; dealId?: string } | null;
+  staff: { value: string; label: string }[];
+  onClose: () => void;
+}) {
+  const isMobile = useIsMobile();
+  const { token: tk } = theme.useToken();
+  const queryClient = useQueryClient();
+  const open = !!target;
+
+  const { data: card, isLoading } = useQuery({
+    queryKey: ['cashbox2-client', target?.clientId],
+    queryFn: () => cashboxV2Api.clientCard(target!.clientId),
+    enabled: open,
+  });
+
+  const [selected, setSelected] = useState<string[]>([]);
+  const [amount, setAmount] = useState<number | null>(null);
+  const [amountTouched, setAmountTouched] = useState(false);
+  const [method, setMethod] = useState<PaymentMethodCode | undefined>(readLastMethod);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [paidAt, setPaidAt] = useState<Dayjs>(dayjs());
+  const [receivedById, setReceivedById] = useState<string>();
+  const [note, setNote] = useState('');
+
+  // Новый клиент в панели — сбрасываем форму и по умолчанию берём все его долги
+  // (или одну сделку, если панель открыли из списка сделок).
+  useEffect(() => {
+    if (!card || !target || card.client.id !== target.clientId) return;
+    const preselect = target.dealId && card.deals.some((d) => d.dealId === target.dealId)
+      ? [target.dealId]
+      : card.deals.map((d) => d.dealId);
+    setSelected(preselect);
+    setAmountTouched(false);
+    setPaidAt(dayjs());
+    setReceivedById(undefined);
+    setNote('');
+    setMoreOpen(false);
+  }, [card, target]);
+
+  const selectedDebt = useMemo(
+    () => (card?.deals ?? []).filter((d) => selected.includes(d.dealId)).reduce((s, d) => s + d.remaining, 0),
+    [card, selected],
+  );
+
+  // Пока кассир сам не трогал сумму, она равна долгу по выбранным сделкам.
+  useEffect(() => {
+    if (!amountTouched) setAmount(selectedDebt > 0 ? Math.round(selectedDebt * 100) / 100 : null);
+  }, [selectedDebt, amountTouched]);
+
+  /** Повторяет раскладку бэкенда: от старой сделки к новой, остаток — переплатой на последней. */
+  const allocation = useMemo(() => {
+    const result = new Map<string, number>();
+    if (!card || !amount || amount <= 0) return { byDeal: result, overpayment: 0, lastTitle: undefined };
+    let left = Math.round(amount * 100);
+    const chosen = card.deals.filter((d) => selected.includes(d.dealId));
+    for (const d of chosen) {
+      if (left <= 0) break;
+      const take = Math.min(Math.round(d.remaining * 100), left);
+      result.set(d.dealId, take / 100);
+      left -= take;
+    }
+    const last = chosen[chosen.length - 1];
+    if (left > 0 && last) result.set(last.dealId, (result.get(last.dealId) ?? 0) + left / 100);
+    return { byDeal: result, overpayment: left / 100, lastTitle: last?.title || last?.dealId.slice(0, 8) };
+  }, [card, amount, selected]);
+
+  const payMut = useMutation({
+    mutationFn: () => cashboxV2Api.payClient(target!.clientId, {
+      amount: amount!,
+      method: method!,
+      dealIds: selected,
+      paidAt: paidAt.isSame(dayjs(), 'day') ? undefined : paidAt.toISOString(),
+      note: note.trim() || undefined,
+      receivedById,
+    }),
+    onSuccess: (res) => {
+      const total = res.payments.reduce((s, p) => s + p.amount, 0);
+      message.success(
+        `Проведено ${formatUZS(total)}`
+        + (res.payments.length > 1 ? ` на ${res.payments.length} ${plural(res.payments.length, 'сделку', 'сделки', 'сделок')}` : ''),
+      );
+      saveLastMethod(method!);
+      for (const key of ['cashbox2-to-pay', 'cashbox2-client', 'cashbox', 'finance-debts', 'finance-active-deals']) {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      }
+      onClose();
+    },
+    onError: (err: any) => {
+      message.error(err?.response?.data?.error || err?.response?.data?.message || 'Не удалось провести оплату');
+    },
+  });
+
+  const canSubmit = !!card && !!amount && amount > 0 && !!method && selected.length > 0 && !payMut.isPending;
+
+  const submit = () => {
+    if (!canSubmit) {
+      if (!method) message.warning('Выберите способ оплаты');
+      return;
+    }
+    if (allocation.overpayment > 0) {
+      Modal.confirm({
+        title: 'Сумма больше долга',
+        content: (
+          <div>
+            Долг по выбранным сделкам: <strong>{formatUZS(selectedDebt)}</strong>.<br />
+            Лишние <strong>{formatUZS(allocation.overpayment)}</strong> останутся переплатой
+            на сделке «{allocation.lastTitle}».
+          </div>
+        ),
+        okText: 'Всё верно, провести',
+        cancelText: 'Исправить',
+        onOk: () => payMut.mutate(),
+      });
+      return;
+    }
+    payMut.mutate();
+  };
+
+  const toggleDeal = (dealId: string, checked: boolean) => {
+    setSelected((prev) => (checked ? [...prev, dealId] : prev.filter((id) => id !== dealId)));
+  };
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      placement={isMobile ? 'bottom' : 'right'}
+      size={isMobile ? '92%' : 520}
+      destroyOnClose
+      title={card && card.client.id === target?.clientId ? (
+        <ClientCompanyDisplay client={{ id: card.client.id, companyName: card.client.companyName, isSvip: card.client.isSvip }} link />
+      ) : 'Оплата'}
+      footer={
+        <Button type="primary" size="large" block disabled={!canSubmit} loading={payMut.isPending} onClick={submit}>
+          {amount ? `Провести ${formatUZS(amount)}` : 'Провести'}
+        </Button>
+      }
+    >
+      {isLoading || !card || card.client.id !== target?.clientId ? (
+        <div style={{ textAlign: 'center', padding: 32 }}><Spin /></div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+            <Typography.Text type="secondary">Общий долг</Typography.Text>
+            <Typography.Text strong style={{ fontSize: 22, color: card.totalDebt > 0 ? tk.colorWarning : tk.colorSuccess }}>
+              {card.totalDebt > 0 ? formatUZS(card.totalDebt) : 'Нет долга'}
+            </Typography.Text>
+          </div>
+          {(card.client.contactName || card.client.phone) && (
+            <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>
+              {[card.client.contactName, card.client.phone].filter(Boolean).join(' · ')}
+            </Typography.Text>
+          )}
+
+          {card.prepayment > 0 && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+              title={`У клиента переплата ${formatUZS(card.prepayment)} на других сделках`}
+              description={<>Зачесть её пока можно в <Link to="/finance/cashbox?tab=active">старой кассе</Link>.</>}
+            />
+          )}
+
+          {card.deals.length === 0 ? (
+            <Empty description="Открытых долгов нет" style={{ margin: '24px 0' }} />
+          ) : (
+            <>
+              <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>Сумма</Typography.Text>
+              <InputNumber
+                autoFocus
+                size="large"
+                style={{ width: '100%', fontWeight: 600 }}
+                min={1}
+                value={amount}
+                onChange={(v) => { setAmount(v == null ? null : Number(v)); setAmountTouched(true); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) submit(); }}
+                formatter={moneyFormatter}
+                parser={(v) => Number(moneyParser(v))}
+              />
+              {amountTouched && amount !== selectedDebt && selectedDebt > 0 && (
+                <Button
+                  type="link"
+                  size="small"
+                  style={{ padding: 0 }}
+                  onClick={() => setAmountTouched(false)}
+                >
+                  Весь долг: {formatUZS(selectedDebt)}
+                </Button>
+              )}
+
+              <Typography.Text strong style={{ display: 'block', margin: '14px 0 6px' }}>Способ оплаты</Typography.Text>
+              <Radio.Group
+                optionType="button"
+                buttonStyle="solid"
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+                options={METHODS}
+                style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}
+              />
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', margin: '18px 0 6px' }}>
+                <Typography.Text strong>
+                  Куда
+                  <Typography.Text type="secondary" style={{ fontWeight: 400, fontSize: 12, marginLeft: 6 }}>
+                    сначала самые старые
+                  </Typography.Text>
+                </Typography.Text>
+                {card.deals.length > 1 && (
+                  <Button
+                    type="link"
+                    size="small"
+                    style={{ padding: 0 }}
+                    onClick={() => setSelected(selected.length === card.deals.length ? [] : card.deals.map((d) => d.dealId))}
+                  >
+                    {selected.length === card.deals.length ? 'Снять все' : 'Выбрать все'}
+                  </Button>
+                )}
+              </div>
+              <div>
+                {card.deals.map((d) => {
+                  const checked = selected.includes(d.dealId);
+                  const gets = allocation.byDeal.get(d.dealId) ?? 0;
+                  const closes = checked && gets >= d.remaining - 0.009;
+                  return (
+                    <div
+                      key={d.dealId}
+                      style={{
+                        display: 'flex',
+                        gap: 10,
+                        alignItems: 'flex-start',
+                        padding: '8px 10px',
+                        border: `1px solid ${checked ? tk.colorPrimaryBorder : tk.colorBorderSecondary}`,
+                        borderRadius: 8,
+                        marginBottom: 6,
+                        cursor: 'pointer',
+                        opacity: checked ? 1 : 0.65,
+                      }}
+                      onClick={() => toggleDeal(d.dealId, !checked)}
+                    >
+                      <Checkbox checked={checked} style={{ marginTop: 2 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {d.title || d.dealId.slice(0, 8)}
+                          </span>
+                          <span style={{ whiteSpace: 'nowrap' }}>{formatUZS(d.remaining)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            {dayjs(d.createdAt).format('DD.MM.YYYY')} · {daysAgo(d.createdAt)} дн.
+                            {d.contractNumber && ` · №${d.contractNumber}`}
+                          </Typography.Text>
+                          {checked && gets > 0 && (
+                            <Typography.Text style={{ fontSize: 12, color: closes ? tk.colorSuccess : tk.colorText, whiteSpace: 'nowrap' }}>
+                              {closes ? 'закроется' : `→ ${formatUZS(gets)}`}
+                            </Typography.Text>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {allocation.overpayment > 0 && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginTop: 8 }}
+                  title={`Сумма больше долга на ${formatUZS(allocation.overpayment)} — останется переплатой на «${allocation.lastTitle}»`}
+                />
+              )}
+
+              {/* Дата, «кто принял» и комментарий нужны редко — не загромождают форму. */}
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0, marginTop: 12 }}
+                onClick={() => setMoreOpen((v) => !v)}
+                icon={moreOpen ? <UpOutlined /> : <DownOutlined />}
+              >
+                {moreOpen
+                  ? 'Скрыть'
+                  : `Дата, кто принял, комментарий${!paidAt.isSame(dayjs(), 'day') || receivedById || note ? ' · изменено' : ''}`}
+              </Button>
+              {moreOpen && (
+                <div style={{ display: 'grid', gap: 10, marginTop: 8 }}>
+                  <DatePicker
+                    value={paidAt}
+                    onChange={(d) => d && setPaidAt(d)}
+                    format="DD.MM.YYYY"
+                    allowClear={false}
+                    disabledDate={(d) => !!d && d.isAfter(dayjs().endOf('day'))}
+                    style={{ width: '100%' }}
+                  />
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder="Принял: вы"
+                    value={receivedById}
+                    onChange={setReceivedById}
+                    options={staff}
+                    filterOption={(input, option) => matchesSearch(String(option?.label ?? ''), input)}
+                  />
+                  <Input.TextArea
+                    rows={2}
+                    maxLength={500}
+                    placeholder="Комментарий"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          {card.recentPayments.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>Последние оплаты</Typography.Text>
+              {card.recentPayments.map((p) => (
+                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, padding: '3px 0' }}>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {dayjs(p.paidAt).format('DD.MM')} · {p.dealTitle || p.dealId.slice(0, 8)}
+                  </span>
+                  <span style={{ whiteSpace: 'nowrap', color: tk.colorTextSecondary }}>
+                    {formatUZS(p.amount)} · {nonCashTag[p.kind]?.label ?? methodLabel(p.method)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Drawer>
+  );
+}
+
+// ─────────────────────────── Журнал ───────────────────────────
+
+function JournalTab({ staff }: { staff: { value: string; label: string }[] }) {
+  const isMobile = useIsMobile();
+  const { token: tk } = theme.useToken();
+  const [period, setPeriod] = useState<JournalPeriod>('day');
+  const [custom, setCustom] = useState<[Dayjs, Dayjs] | null>(null);
+  const [method, setMethod] = useState<string>();
+  const [receivedById, setReceivedById] = useState<string>();
+  const [receiptLoading, setReceiptLoading] = useState<string | null>(null);
+
+  // Пересчитываем границы при смене периода; «сегодня» само обновится при следующем выборе.
+  const range = useMemo(() => periodRange(period, custom), [period, custom]);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['cashbox', 'v2', range, method, receivedById],
+    queryFn: () => financeApi.cashbox({ period: 'custom', from: range!.from, to: range!.to, method, receivedById }),
+    enabled: !!range,
+    refetchInterval: 60_000,
+  });
+
+  const filterCount = [method, receivedById].filter(Boolean).length;
+
+  const downloadReceipt = async (dealId: string) => {
+    setReceiptLoading(dealId);
+    try {
+      await dealsApi.downloadPaymentReceipt(dealId);
+    } catch {
+      message.error('Не удалось сформировать квитанцию');
+    } finally {
+      setReceiptLoading(null);
+    }
+  };
+
+  const exportCsv = () => {
+    const rows = data?.payments ?? [];
+    if (rows.length === 0) { message.info('Нечего выгружать'); return; }
+    downloadCsv(
+      `kassa-${dayjs().format('YYYY-MM-DD-HHmm')}`,
+      ['Дата', 'Время', 'Клиент', 'Сделка', 'Сумма', 'Способ', 'Тип', 'Принял', 'Примечание'],
+      rows.map((p) => [
+        dayjs(p.paidAt).format('DD.MM.YYYY'),
+        dayjs(p.paidAt).format('HH:mm'),
+        p.clientName,
+        p.dealTitle || p.dealId.slice(0, 8),
+        Math.round(p.amount),
+        methodLabel(p.method),
+        nonCashTag[p.kind]?.label ?? 'Оплата',
+        p.receivedBy || '',
+        p.note || '',
+      ]),
+    );
+  };
+
+  const filters = (
+    <div style={{ display: 'grid', gap: 8, width: 220 }}>
+      <Select allowClear placeholder="Способ оплаты" value={method} onChange={setMethod} options={METHODS} />
+      <Select
+        allowClear
+        showSearch
+        placeholder="Принял"
+        value={receivedById}
+        onChange={setReceivedById}
+        options={staff}
+        filterOption={(input, option) => matchesSearch(String(option?.label ?? ''), input)}
+      />
+      {filterCount > 0 && (
+        <Button size="small" onClick={() => { setMethod(undefined); setReceivedById(undefined); }}>Сбросить</Button>
+      )}
+    </div>
+  );
+
+  const isNonCash = (p: CashboxPayment) => p.kind !== 'CASH_IN' && p.kind !== 'REVERSAL';
+
+  const columns = [
+    {
+      title: 'Время',
+      dataIndex: 'paidAt',
+      width: 130,
+      render: (v: string) => dayjs(v).format(period === 'day' ? 'HH:mm' : 'DD.MM HH:mm'),
+    },
+    {
+      title: 'Клиент · сделка',
+      key: 'who',
+      render: (_: unknown, p: CashboxPayment) => (
+        <div style={{ lineHeight: 1.3 }}>
+          <div><ClientCompanyDisplay client={{ id: p.clientId, companyName: p.clientName, isSvip: p.clientIsSvip }} /></div>
+          <Link to={`/deals/${p.dealId}`} style={{ fontSize: 12 }}>{p.dealTitle || p.dealId.slice(0, 8)}</Link>
+          {p.note && <Typography.Text type="secondary" style={{ fontSize: 12 }} title={p.note}> · 💬</Typography.Text>}
+        </div>
+      ),
+    },
+    {
+      title: 'Сумма',
+      dataIndex: 'amount',
+      align: 'right' as const,
+      render: (v: number, p: CashboxPayment) => isNonCash(p)
+        ? <Typography.Text type="secondary" style={{ whiteSpace: 'nowrap' }}>{formatUZS(v)}</Typography.Text>
+        : <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>{formatUZS(v)}</Typography.Text>,
+    },
+    {
+      title: 'Способ',
+      key: 'method',
+      width: 150,
+      render: (_: unknown, p: CashboxPayment) => nonCashTag[p.kind]
+        ? <Tag color={nonCashTag[p.kind].color}>{nonCashTag[p.kind].label}</Tag>
+        : <Tag>{methodLabel(p.method)}</Tag>,
+    },
+    {
+      title: 'Принял',
+      dataIndex: 'receivedBy',
+      width: 120,
+      render: (v: string | null) => getFirstName(v) || '—',
+    },
+    {
+      title: '',
+      key: 'receipt',
+      width: 50,
+      render: (_: unknown, p: CashboxPayment) => (
+        <Button
+          type="text"
+          size="small"
+          icon={<PrinterOutlined />}
+          title="Квитанция"
+          loading={receiptLoading === p.dealId}
+          onClick={() => downloadReceipt(p.dealId)}
+        />
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <Space wrap style={{ marginBottom: 12 }}>
+        <Segmented
+          value={period}
+          onChange={(v) => setPeriod(v as JournalPeriod)}
+          options={[
+            { label: 'Сегодня', value: 'day' },
+            { label: 'Вчера', value: 'yesterday' },
+            { label: '7 дней', value: '7d' },
+            { label: '30 дней', value: '30d' },
+            { label: 'Период', value: 'custom' },
+          ]}
+        />
+        {period === 'custom' && (
+          <DatePicker.RangePicker
+            format="DD.MM.YYYY"
+            value={custom}
+            disabledDate={(d) => !!d && d.isAfter(dayjs().endOf('day'))}
+            onChange={(r) => setCustom(r && r[0] && r[1] ? [r[0], r[1]] : null)}
+          />
+        )}
+        <Popover content={filters} trigger="click" placement="bottomLeft">
+          <Badge count={filterCount} size="small">
+            <Button icon={<FilterOutlined />}>Фильтры</Button>
+          </Badge>
+        </Popover>
+        <Button icon={<DownloadOutlined />} onClick={exportCsv}>Экспорт</Button>
+      </Space>
+
+      {error && <Alert type="error" showIcon style={{ marginBottom: 12 }} title="Не удалось загрузить журнал" />}
+      {period === 'custom' && !custom && (
+        <Alert type="info" showIcon style={{ marginBottom: 12 }} title="Выберите даты начала и конца периода" />
+      )}
+
+      {data && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', marginBottom: 12, fontSize: 13, color: tk.colorTextSecondary }}>
+          <span>
+            Итого: <Typography.Text strong>{formatUZS(data.totals.totalAmount)}</Typography.Text>
+            {` · ${data.totals.count} ${plural(data.totals.count, 'оплата', 'оплаты', 'оплат')}`}
+          </span>
+          {data.byMethod.map((m) => (
+            <span key={m.method}>{methodLabel(m.method)}: {formatUZS(m.total)}</span>
+          ))}
+          {!!data.totals.nonCashCount && (
+            <span>+ {data.totals.nonCashCount} служебных на {formatUZS(data.totals.nonCashAmount)} (не деньги)</span>
+          )}
+        </div>
+      )}
+
+      {isMobile ? (
+        <List
+          loading={isLoading}
+          dataSource={data?.payments ?? []}
+          locale={{ emptyText: <Empty description="Оплат нет" /> }}
+          pagination={{ pageSize: 20, size: 'small' }}
+          renderItem={(p) => (
+            <Card size="small" style={{ marginBottom: 8 }} styles={{ body: { padding: 12 } }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <span style={{ minWidth: 0 }}>{p.clientName}</span>
+                <Typography.Text strong={!isNonCash(p)} type={isNonCash(p) ? 'secondary' : undefined} style={{ whiteSpace: 'nowrap' }}>
+                  {formatUZS(p.amount)}
+                </Typography.Text>
+              </div>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {dayjs(p.paidAt).format('DD.MM HH:mm')} · {nonCashTag[p.kind]?.label ?? methodLabel(p.method)}
+                {p.receivedBy && ` · ${getFirstName(p.receivedBy)}`}
+              </Typography.Text>
+            </Card>
+          )}
+        />
+      ) : (
+        <Table
+          dataSource={data?.payments}
+          columns={columns}
+          rowKey="id"
+          loading={isLoading}
+          size="middle"
+          pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }}
+          locale={{ emptyText: 'Оплат нет' }}
+        />
+      )}
+    </>
+  );
+}

@@ -217,6 +217,7 @@ function tree(a: MenuAccess): { key: string; title?: string; items: DraftNode[] 
       title: 'Финансы',
       items: [
         { key: '/finance/cashbox', to: '/finance/cashbox', text: 'Касса', icon: CashRegister, show: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'WAREHOUSE_MANAGER', 'OPERATOR') },
+        { key: '/finance/cashbox-v2', to: '/finance/cashbox-v2', text: 'Касса 2.0', icon: CashRegister, show: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'WAREHOUSE_MANAGER', 'OPERATOR') },
         { key: '/finance/cashbox?tab=debtors', to: '/finance/cashbox?tab=debtors', text: 'Долги', icon: Receipt, show: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT') },
         { key: '/finance/review', to: '/finance/review', text: 'На проверке', icon: Scales, show: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT') },
         { key: '/finance/expenses', to: '/finance/expenses', text: 'Расходы', icon: Wallet, show: hasPermission('manage_expenses') },
