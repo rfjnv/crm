@@ -220,6 +220,8 @@ export default function ClientDetailPage() {
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('ALL');
   const [dealSearch, setDealSearch] = useState('');
   const [dealDateRange, setDealDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  // Temporary checkmarks on deals — local only, reset on reload
+  const [selectedDealIds, setSelectedDealIds] = useState<React.Key[]>([]);
 
   // Analytics period
   const [analyticsPeriod, setAnalyticsPeriod] = useState<number>(30);
@@ -1396,9 +1398,31 @@ export default function ClientDetailPage() {
                   </Space>
                 }
               >
+                {selectedDealIds.length > 0 && (() => {
+                  const selected = filteredDeals.filter((d) => selectedDealIds.includes(d.id));
+                  const selAmount = selected.reduce((s, d) => s + Number(d.amount), 0);
+                  const selPaid = selected.reduce((s, d) => s + Number(d.paidAmount ?? 0), 0);
+                  return (
+                    <Space wrap style={{ marginBottom: 12 }}>
+                      <Typography.Text strong>Отмечено: {selected.length}</Typography.Text>
+                      <Typography.Text>Сумма: {formatUZS(selAmount)}</Typography.Text>
+                      <Typography.Text>Оплачено: {formatUZS(selPaid)}</Typography.Text>
+                      <Typography.Text type={selAmount - selPaid > 0 ? 'danger' : 'success'}>
+                        Остаток: {formatUZS(selAmount - selPaid)}
+                      </Typography.Text>
+                      <Button size="small" onClick={() => setSelectedDealIds([])}>
+                        Снять отметки
+                      </Button>
+                    </Space>
+                  );
+                })()}
                 <Table
                   dataSource={filteredDeals}
                   rowKey="id"
+                  rowSelection={{
+                    selectedRowKeys: selectedDealIds,
+                    onChange: (keys) => setSelectedDealIds(keys),
+                  }}
                   pagination={false}
                   size="small"
                   bordered={false}
@@ -1413,21 +1437,22 @@ export default function ClientDetailPage() {
                     const totalDiff = totalAmount - totalPaid;
                     return (
                       <Table.Summary.Row>
-                        <Table.Summary.Cell index={0} colSpan={2}>
+                        <Table.Summary.Cell index={0} />
+                        <Table.Summary.Cell index={1} colSpan={2}>
                           <Typography.Text strong>Итого (без отмен): {deals.length} сделок</Typography.Text>
                         </Table.Summary.Cell>
-                        <Table.Summary.Cell index={2} align="right">
+                        <Table.Summary.Cell index={3} align="right">
                           <Typography.Text strong>{formatUZS(totalAmount)}</Typography.Text>
                         </Table.Summary.Cell>
-                        <Table.Summary.Cell index={3} align="right">
+                        <Table.Summary.Cell index={4} align="right">
                           <Typography.Text strong>{formatUZS(totalPaid)}</Typography.Text>
                         </Table.Summary.Cell>
-                        <Table.Summary.Cell index={4} align="right">
+                        <Table.Summary.Cell index={5} align="right">
                           <Typography.Text strong type={totalDiff > 0 ? 'danger' : 'success'}>
                             {totalDiff < 0 ? `Переплата: ${formatUZS(Math.abs(totalDiff))}` : formatUZS(Math.max(totalDiff, 0))}
                           </Typography.Text>
                         </Table.Summary.Cell>
-                        <Table.Summary.Cell index={5} colSpan={2} />
+                        <Table.Summary.Cell index={6} colSpan={2} />
                       </Table.Summary.Row>
                     );
                   }}
