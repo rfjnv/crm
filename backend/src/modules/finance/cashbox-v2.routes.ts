@@ -13,6 +13,7 @@ import { buildClientCreditNote, cashOnlyFilter } from '../../lib/payment-kind';
 import { tashkentStartOfToday } from '../../lib/tz';
 import { storeFinanceTelegramLog } from '../telegram/telegram-deal-groups.service';
 import { MAX_PAYMENT_AMOUNT } from '../deals/deals.dto';
+import { resolveUsdPart, type UsdPart } from '../../lib/paymentUsd';
 
 /**
  * «Касса 2.0» — приём денег за минимум шагов.
@@ -228,7 +229,39 @@ const clientPaymentDto = z.object({
   paidAt: z.string().datetime().optional(),
   note: z.string().max(500).optional(),
   receivedById: z.string().uuid().optional(),
+  /** Часть суммы, принятая долларами: сколько $ и по какому курсу. amount — полный эквивалент в сумах. */
+  usdAmount: z.number().positive().max(10_000_000).optional(),
+  usdRate: z.number().positive().max(1_000_000).optional(),
 });
+
+/**
+ * Делит долларовую часть между платежами по сделкам в том же порядке, что и сумму:
+ * доллары заполняют сначала самые старые сделки. Если долларов больше суммы (сдача
+ * сумами), лишнее ложится на последний платёж с долларами.
+ *
+ * Сумма `usdUzs` по платежам совпадает с общей до тийина: из неё касса считает остаток
+ * «сумами» (amount − usdUzs). У `usdAmount` последний платёж забирает копеечный остаток.
+ */
+function splitUsd(part: UsdPart, paymentsCents: number[]): ({ usdAmount: number; usdRate: number; usdUzs: number } | null)[] {
+  let leftUzs = toCents(part.usdUzs);
+  const uzsShares = paymentsCents.map((cents) => {
+    const take = Math.min(cents, leftUzs);
+    leftUzs -= take;
+    return take;
+  });
+  if (leftUzs > 0) {
+    const lastWithUsd = uzsShares.map((v, i) => (v > 0 ? i : -1)).filter((i) => i >= 0).pop() ?? 0;
+    uzsShares[lastWithUsd] += leftUzs;
+  }
+  const lastIdx = uzsShares.map((v, i) => (v > 0 ? i : -1)).filter((i) => i >= 0).pop();
+  let usdLeftCents = toCents(part.usdAmount);
+  return uzsShares.map((uzsCents, i) => {
+    if (uzsCents <= 0) return null;
+    const usdCents = i === lastIdx ? usdLeftCents : Math.round((uzsCents / toCents(part.usdUzs)) * toCents(part.usdAmount));
+    usdLeftCents -= usdCents;
+    return { usdAmount: fromCents(usdCents), usdRate: part.usdRate, usdUzs: fromCents(uzsCents) };
+  });
+}
 
 router.post(
   '/clients/:clientId/payments',
@@ -242,6 +275,8 @@ router.post(
 
     const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
     if (paidAt > new Date()) throw new AppError(400, 'Дата оплаты не может быть в будущем');
+    // Проверки те же, что у платежа по одной сделке: оба поля и без «лишнего ноля».
+    const usdPart = resolveUsdPart(dto.amount, dto.usdAmount, dto.usdRate);
 
     const result = await prisma.$transaction(async (tx) => {
       let receivedById = user.userId;
@@ -282,9 +317,12 @@ router.post(
       const overpaymentCents = left;
       if (overpaymentCents > 0) plan[plan.length - 1].cents += overpaymentCents;
 
-      const created: { paymentId: string; dealId: string; title: string | null; amount: number; newPaid: number; paymentStatus: PrismaPaymentStatus }[] = [];
-      for (const { deal, cents } of plan) {
-        if (cents <= 0) continue;
+      const paying = plan.filter((p) => p.cents > 0);
+      const usdShares = usdPart ? splitUsd(usdPart, paying.map((p) => p.cents)) : [];
+
+      const created: { paymentId: string; dealId: string; title: string | null; amount: number; newPaid: number; paymentStatus: PrismaPaymentStatus; usdAmount: number | null }[] = [];
+      for (const [i, { deal, cents }] of paying.entries()) {
+        const usd = usdShares[i] ?? null;
         const amount = fromCents(cents);
         const newPaid = fromCents(toCents(deal.paidAmount) + cents);
         const paymentStatus = paymentStatusFromAmounts(Number(deal.amount), newPaid);
@@ -294,6 +332,7 @@ router.post(
             dealId: deal.id,
             clientId,
             amount,
+            ...(usd ?? {}),
             paidAt,
             method: dto.method,
             note: dto.note?.trim() || null,
@@ -312,7 +351,7 @@ router.post(
           throw new AppError(409, `Сделка «${deal.title || deal.id.slice(0, 8)}» изменилась — обновите страницу и повторите.`);
         }
 
-        created.push({ paymentId: payment.id, dealId: deal.id, title: deal.title, amount, newPaid, paymentStatus });
+        created.push({ paymentId: payment.id, dealId: deal.id, title: deal.title, amount, newPaid, paymentStatus, usdAmount: usd?.usdAmount ?? null });
       }
 
       return { created, overpayment: fromCents(overpaymentCents) };
@@ -331,6 +370,7 @@ router.post(
           paymentStatus: c.paymentStatus,
           source: 'cashbox-v2',
           clientTotal: dto.amount,
+          ...(c.usdAmount != null ? { usdAmount: c.usdAmount, usdRate: dto.usdRate } : {}),
         },
       });
     }
@@ -360,6 +400,7 @@ router.post(
         title: c.title,
         amount: c.amount,
         paymentStatus: c.paymentStatus,
+        usdAmount: c.usdAmount,
       })),
       overpayment: result.overpayment,
     });

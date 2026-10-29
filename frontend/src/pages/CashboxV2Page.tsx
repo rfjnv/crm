@@ -17,6 +17,7 @@ import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import { matchesSearch } from '../utils/translit';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
 import { downloadCsv } from '../utils/csv';
+import { UsdPaymentTag } from '../components/UsdPaymentFields';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { getFirstName } from '../lib/name-utils';
 import type { DealStatus } from '../types';
@@ -60,6 +61,22 @@ function readLastMethod(): PaymentMethodCode | undefined {
 
 function saveLastMethod(m: PaymentMethodCode) {
   try { localStorage.setItem(LAST_METHOD_KEY, m); } catch { /* приватный режим — не страшно */ }
+}
+
+/** Курс меняется раз в день — кассиру незачем вбивать его заново на каждой оплате. */
+const LAST_USD_RATE_KEY = 'cashbox2.lastUsdRate';
+
+function readLastUsdRate(): number | null {
+  try {
+    const v = Number(localStorage.getItem(LAST_USD_RATE_KEY));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastUsdRate(rate: number) {
+  try { localStorage.setItem(LAST_USD_RATE_KEY, String(rate)); } catch { /* не страшно */ }
 }
 
 function plural(n: number, one: string, few: string, many: string) {
@@ -489,6 +506,9 @@ function PaymentPanel({
   const [paidAt, setPaidAt] = useState<Dayjs>(dayjs());
   const [receivedById, setReceivedById] = useState<string>();
   const [note, setNote] = useState('');
+  const [usdOn, setUsdOn] = useState(false);
+  const [usdAmount, setUsdAmount] = useState<number | null>(null);
+  const [usdRate, setUsdRate] = useState<number | null>(readLastUsdRate);
 
   // Новый клиент в панели — сбрасываем форму и по умолчанию берём все его долги
   // (или одну сделку, если панель открыли из списка сделок).
@@ -504,6 +524,8 @@ function PaymentPanel({
     setReceivedById(undefined);
     setNote('');
     setMoreOpen(false);
+    setUsdOn(false);
+    setUsdAmount(null);
   }, [card, target]);
 
   const selectedDebt = useMemo(
@@ -523,6 +545,21 @@ function PaymentPanel({
   }, [fullAmount, amountTouched]);
 
   const effectiveAmount = isCredit && amount ? Math.min(amount, creditMax) : amount;
+
+  // Долларовая часть: amount — по-прежнему полный эквивалент в сумах, который ложится на
+  // сделки; здесь — сколько из него пришло в $ и по какому курсу (как в кассовой книге).
+  const usdActive = !isCredit && usdOn && !!usdAmount && !!usdRate;
+  const usdUzs = usdActive ? Math.round(usdAmount! * usdRate! * 100) / 100 : 0;
+  const uzsPart = (amount ?? 0) - usdUzs;
+  // Те же проверки, что на сервере: оба поля и сдача сумами не больше половины долларов.
+  const usdError = !isCredit && usdOn
+    ? (!usdAmount || !usdRate
+      ? 'Укажите сумму в $ и курс'
+      : usdUzs - (amount ?? 0) > usdUzs / 2
+        ? 'Доллары по этому курсу намного больше суммы — проверьте $ и курс'
+        : '')
+    : '';
+  const usdInvalid = !!usdError;
 
   /** Повторяет раскладку бэкенда: от старой сделки к новой, остаток — переплатой на последней. */
   const allocation = useMemo(() => {
@@ -597,14 +634,17 @@ function PaymentPanel({
       paidAt: paidAt.isSame(dayjs(), 'day') ? undefined : paidAt.toISOString(),
       note: note.trim() || undefined,
       receivedById,
+      ...(usdActive ? { usdAmount: usdAmount!, usdRate: usdRate! } : {}),
     }),
     onSuccess: (res) => {
       const total = res.payments.reduce((s, p) => s + p.amount, 0);
       message.success(
         `Проведено ${formatUZS(total)}`
+        + (usdActive ? ` (из них $${usdAmount!.toLocaleString('ru-RU')})` : '')
         + (res.payments.length > 1 ? ` на ${res.payments.length} ${plural(res.payments.length, 'сделку', 'сделки', 'сделок')}` : ''),
       );
       saveLastMethod(method!);
+      if (usdActive) saveLastUsdRate(usdRate!);
       invalidateAll();
       onClose();
     },
@@ -615,11 +655,12 @@ function PaymentPanel({
 
   const pending = payMut.isPending || creditMut.isPending;
   const canSubmit = !!card && !!effectiveAmount && effectiveAmount > 0 && (isCredit || !!method)
-    && selected.length > 0 && !pending;
+    && selected.length > 0 && !pending && !usdInvalid;
 
   const submit = () => {
     if (!canSubmit) {
       if (!isCredit && !method) message.warning('Выберите способ оплаты');
+      else if (usdInvalid) message.warning(usdError);
       return;
     }
     if (isCredit) {
@@ -778,6 +819,64 @@ function PaymentPanel({
                     options={METHODS}
                     style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}
                   />
+
+                  <Checkbox
+                    checked={usdOn}
+                    onChange={(e) => setUsdOn(e.target.checked)}
+                    style={{ marginTop: 12 }}
+                  >
+                    Часть или всё — долларами
+                  </Checkbox>
+                  {usdOn && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <InputNumber
+                          autoFocus
+                          prefix="$"
+                          placeholder="Сколько"
+                          style={{ flex: 1 }}
+                          min={0.01}
+                          value={usdAmount}
+                          onChange={(v) => setUsdAmount(v == null ? null : Number(v))}
+                          formatter={moneyFormatter}
+                          parser={(v) => Number(moneyParser(v))}
+                        />
+                        <InputNumber
+                          prefix="×"
+                          placeholder="Курс, сум за $1"
+                          style={{ flex: 1 }}
+                          min={1}
+                          value={usdRate}
+                          onChange={(v) => setUsdRate(v == null ? null : Number(v))}
+                          formatter={moneyFormatter}
+                          parser={(v) => Number(moneyParser(v))}
+                        />
+                      </div>
+                      {usdUzs > 0 && (
+                        <div style={{ marginTop: 6, fontSize: 12 }}>
+                          <Typography.Text type={usdInvalid ? 'danger' : uzsPart < 0 ? 'warning' : 'secondary'} style={{ fontSize: 12 }}>
+                            ${usdAmount!.toLocaleString('ru-RU')} × {usdRate!.toLocaleString('ru-RU')} = {formatUZS(usdUzs)}
+                            {' · '}
+                            {uzsPart >= 0 ? `сумами: ${formatUZS(uzsPart)}` : `сдача сумами: ${formatUZS(-uzsPart)}`}
+                          </Typography.Text>
+                          {/* Клиент часто платит только долларами — тогда сумма сделки и есть $ × курс. */}
+                          {Math.abs(uzsPart) > 0.009 && (
+                            <Button
+                              type="link"
+                              size="small"
+                              style={{ padding: 0, marginLeft: 8, height: 'auto', fontSize: 12 }}
+                              onClick={() => { setAmount(usdUzs); setAmountTouched(true); }}
+                            >
+                              Сумма = {formatUZS(usdUzs)}
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                      {usdInvalid && usdUzs > 0 && (
+                        <Typography.Text type="danger" style={{ display: 'block', fontSize: 12 }}>{usdError}</Typography.Text>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
@@ -959,13 +1058,15 @@ function JournalTab({ staff }: { staff: { value: string; label: string }[] }) {
     if (rows.length === 0) { message.info('Нечего выгружать'); return; }
     downloadCsv(
       `kassa-${dayjs().format('YYYY-MM-DD-HHmm')}`,
-      ['Дата', 'Время', 'Клиент', 'Сделка', 'Сумма', 'Способ', 'Тип', 'Принял', 'Примечание'],
+      ['Дата', 'Время', 'Клиент', 'Сделка', 'Сумма', 'Из них $', 'Курс', 'Способ', 'Тип', 'Принял', 'Примечание'],
       rows.map((p) => [
         dayjs(p.paidAt).format('DD.MM.YYYY'),
         dayjs(p.paidAt).format('HH:mm'),
         p.clientName,
         p.dealTitle || p.dealId.slice(0, 8),
         Math.round(p.amount),
+        p.usdAmount ?? '',
+        p.usdRate ?? '',
         methodLabel(p.method),
         nonCashTag[p.kind]?.label ?? 'Оплата',
         p.receivedBy || '',
@@ -1018,7 +1119,12 @@ function JournalTab({ staff }: { staff: { value: string; label: string }[] }) {
       align: 'right' as const,
       render: (v: number, p: CashboxPayment) => isNonCash(p)
         ? <Typography.Text type="secondary" style={{ whiteSpace: 'nowrap' }}>{formatUZS(v)}</Typography.Text>
-        : <Typography.Text strong style={{ whiteSpace: 'nowrap' }}>{formatUZS(v)}</Typography.Text>,
+        : (
+          <div style={{ whiteSpace: 'nowrap', lineHeight: 1.3 }}>
+            <Typography.Text strong>{formatUZS(v)}</Typography.Text>
+            {p.usdAmount != null && <div><UsdPaymentTag usdAmount={p.usdAmount} usdRate={p.usdRate} /></div>}
+          </div>
+        ),
     },
     {
       title: 'Способ',
@@ -1092,6 +1198,13 @@ function JournalTab({ staff }: { staff: { value: string; label: string }[] }) {
             Итого: <Typography.Text strong>{formatUZS(data.totals.totalAmount)}</Typography.Text>
             {` · ${data.totals.count} ${plural(data.totals.count, 'оплата', 'оплаты', 'оплат')}`}
           </span>
+          {/* Доллары лежат в кассе отдельно — как раздельные колонки кассовой книги. */}
+          {!!data.totals.usdTotal && (
+            <span>
+              из них сумами: {formatUZS(data.totals.uzsTotal ?? 0)} · долларами:{' '}
+              <Typography.Text strong>${data.totals.usdTotal.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}</Typography.Text>
+            </span>
+          )}
           {data.byMethod.map((m) => (
             <span key={m.method}>{methodLabel(m.method)}: {formatUZS(m.total)}</span>
           ))}

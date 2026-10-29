@@ -60,7 +60,7 @@ export interface ClientPayCard {
 }
 
 export interface ClientPaymentResult {
-  payments: { paymentId: string; dealId: string; title: string | null; amount: number; paymentStatus: string }[];
+  payments: { paymentId: string; dealId: string; title: string | null; amount: number; paymentStatus: string; usdAmount: number | null }[];
   overpayment: number;
 }
 
@@ -86,6 +86,9 @@ export const cashboxV2Api = {
     paidAt?: string;
     note?: string;
     receivedById?: string;
+    /** Часть суммы долларами; amount остаётся полным эквивалентом в сумах. */
+    usdAmount?: number;
+    usdRate?: number;
   }) =>
     client.post<ClientPaymentResult>(`/cashbox-v2/clients/${clientId}/payments`, body).then((r) => r.data),
 
