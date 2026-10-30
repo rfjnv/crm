@@ -1,4 +1,4 @@
-export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo' | 'Poytaxt Group';
+export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo' | 'Poytaxt Group' | 'Mars Paper';
 
 export type TheirOnlyRow = {
   key: string;
@@ -76,6 +76,14 @@ const THEIR_ONLY_RAW: Array<Omit<TheirOnlyRow, 'key'>> = [
   { competitor: 'Poytaxt Group', category: 'Бумага и картон', name: 'Лайнер Metsä Board (Финляндия), двукратное мелование, 130–175 г (за кг, с НДС)', price: 15004 },
   { competitor: 'Poytaxt Group', category: 'Бумага и картон', name: 'Test-Liner макулатурный (Германия), 130–180 г (за кг, с НДС)', price: 13310 },
   { competitor: 'Poytaxt Group', category: 'Бумага и картон', name: 'Этикеточная бумага невлагостойкая (Финляндия), 45–90 г (за кг, с НДС)', price: 20570 },
+  { competitor: 'Mars Paper', category: 'Пленки для ламинации', name: 'Soft touch film 30 мкрн, 35 см (за рулон)', price: 1650000 },
+  { competitor: 'Mars Paper', category: 'Пленки для ламинации', name: 'Soft touch film 30 мкрн, 50 см (за рулон)', price: 2500000 },
+  { competitor: 'Mars Paper', category: 'Бумага и картон', name: 'Картон FBB / APP (Китай) в рулонах, 170 / 210 г (за кг)', price: 13600 },
+  { competitor: 'Mars Paper', category: 'Бумага и картон', name: 'Картон FBB / APP (Китай) в рулонах, 230–325 г (за кг)', price: 13000 },
+  { competitor: 'Mars Paper', category: 'Бумага и картон', name: 'Картон APP (Китай), 190 г, 62×88, пачка 100 листов', price: 1800 },
+  { competitor: 'Mars Paper', category: 'Бумага и картон', name: 'Картон APP (Китай), 190 г, 70×100, пачка 100 листов', price: 2100 },
+  { competitor: 'Mars Paper', category: 'Бумага и картон', name: 'Картон FBB (Китай), 215 г, 70×100, пачка 100 листов', price: 2300 },
+  { competitor: 'Mars Paper', category: 'Бумага и картон', name: 'Картон APP (Китай), 270 г, 84×85, пачка 100 листов', price: 2900 },
 ];
 
 const OUR_ONLY_RAW: Array<Omit<OurOnlyRow, 'key'>> = [

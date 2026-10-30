@@ -3,7 +3,7 @@
 
 export type MatchType = 'Точное' | 'Потенциальное';
 
-export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo' | 'Poytaxt Group';
+export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo' | 'Poytaxt Group' | 'Mars Paper';
 
 export type PriceRow = {
   key: string;
@@ -168,4 +168,11 @@ export const PRICE_ROWS: PriceRow[] = [
   { key: "149", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", competitorProduct: "C1S IVORY BOARD (Китай), 250 г, 70×100, в паллетах — 13 100 за кг (≈2 293 за лист, с НДС)", competitor: "Alfa Karton Savdo" as Competitor, ourPrice: 2720, competitorPrice: 2293, matchType: "Потенциальное" as MatchType },
   { key: "150", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", competitorProduct: "C1S IP Sun (Китай) в рулонах, 270 г, 62 см (за кг, с НДС)", competitor: "Poytaxt Group" as Competitor, ourPrice: 14300, competitorPrice: 14520, matchType: "Точное" as MatchType },
   { key: "151", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", competitorProduct: "GC1 FBB сток (Финляндия) в рулонах, 270 г, 72 см (за кг, с НДС)", competitor: "Poytaxt Group" as Competitor, ourPrice: 14300, competitorPrice: 13431, matchType: "Потенциальное" as MatchType },
+  { key: "152", category: "Ламинационная пленка", ourProduct: "ГЛЯНЦЕВАЯ, 17 мкрн", competitorProduct: "Gloss 18 мкрн, 3000 м (35–84 см)", competitor: "Mars Paper" as Competitor, ourPrice: 43000, competitorPrice: 50000, matchType: "Точное" as MatchType },
+  { key: "153", category: "Ламинационная пленка", ourProduct: "МАТОВАЯ, 17 мкрн", competitorProduct: "Matt 18 мкрн, 3000 м (35–72 см)", competitor: "Mars Paper" as Competitor, ourPrice: 43000, competitorPrice: 50000, matchType: "Точное" as MatchType },
+  { key: "154", category: "Ламинационная пленка", ourProduct: "Золото, 20–22 мкрн", competitorProduct: "Gold 18 мкрн (50 / 70 / 84 см)", competitor: "Mars Paper" as Competitor, ourPrice: 115000, competitorPrice: 105000, matchType: "Потенциальное" as MatchType },
+  { key: "155", category: "Ламинационная пленка", ourProduct: "Серебро, 20–22 мкрн", competitorProduct: "Silver 18 мкрн (50 / 70 см)", competitor: "Mars Paper" as Competitor, ourPrice: 110000, competitorPrice: 67000, matchType: "Потенциальное" as MatchType },
+  { key: "156", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", competitorProduct: "FBB / APP (Китай) в рулонах, 270 г, 64–84 см (за кг)", competitor: "Mars Paper" as Competitor, ourPrice: 14300, competitorPrice: 13000, matchType: "Потенциальное" as MatchType },
+  { key: "157", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", competitorProduct: "FBB / APP (Китай), 250 г, 70×100, пачка 100 листов", competitor: "Mars Paper" as Competitor, ourPrice: 2720, competitorPrice: 2500, matchType: "Точное" as MatchType },
+  { key: "158", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон 62×94, 270 г/м²", competitorProduct: "FBB / APP (Китай), 250 г, 62×94, пачка 100 листов", competitor: "Mars Paper" as Competitor, ourPrice: 2280, competitorPrice: 2200, matchType: "Потенциальное" as MatchType },
 ];

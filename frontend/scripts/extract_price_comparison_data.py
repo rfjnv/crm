@@ -71,7 +71,7 @@ def main() -> int:
 
 export type MatchType = 'Точное' | 'Потенциальное';
 
-export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo' | 'Poytaxt Group';
+export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo' | 'Poytaxt Group' | 'Mars Paper';
 
 export type PriceRow = {
   key: string;

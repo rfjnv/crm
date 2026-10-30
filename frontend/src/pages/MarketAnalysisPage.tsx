@@ -25,6 +25,7 @@ const competitorColor: Record<Competitor, string> = {
   'AVA-TEN': 'volcano',
   'Alfa Karton Savdo': 'lime',
   'Poytaxt Group': 'purple',
+  'Mars Paper': 'geekblue',
 };
 
 function formatMoney(value: number | null): string {

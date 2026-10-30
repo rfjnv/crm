@@ -26,6 +26,7 @@ tr:hover td { background: var(--color-background-secondary); }
 .badge-avaten { background: #FDECE4; color: #8A2E0C; }
 .badge-alfa { background: #EEF7DC; color: #3F5F0F; }
 .badge-poytaxt { background: #EFE8FA; color: #46237A; }
+.badge-mars { background: #E6ECFB; color: #1D3A7A; }
 @media (prefers-color-scheme: dark) {
   .badge-yann { background: #0C447C; color: #B5D4F4; }
   .badge-bit { background: #27500A; color: #C0DD97; }
@@ -35,6 +36,7 @@ tr:hover td { background: var(--color-background-secondary); }
   .badge-avaten { background: #8A2E0C; color: #FBD0BC; }
   .badge-alfa { background: #3F5F0F; color: #D6EDAE; }
   .badge-poytaxt { background: #46237A; color: #DCCDF5; }
+  .badge-mars { background: #1D3A7A; color: #C9D6F7; }
 }
 .cheaper { color: #0F6E56; font-weight: 500; }
 .pricier { color: #A32D2D; font-weight: 500; }
@@ -233,9 +235,16 @@ const data = [
   {cat:"Целлюлозный картон", us:"Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", them:"C1S IVORY BOARD (Китай), 250 г, 70×100, в паллетах — 13 100 за кг (≈2 293 за лист, с НДС)", comp:"Alfa Karton Savdo", usp:2720, theirp:2293, type:"Потенциальное"},
   {cat:"Целлюлозный картон", us:"Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", them:"C1S IP Sun (Китай) в рулонах, 270 г, 62 см (за кг, с НДС)", comp:"Poytaxt Group", usp:14300, theirp:14520, type:"Точное"},
   {cat:"Целлюлозный картон", us:"Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", them:"GC1 FBB сток (Финляндия) в рулонах, 270 г, 72 см (за кг, с НДС)", comp:"Poytaxt Group", usp:14300, theirp:13431, type:"Потенциальное"},
+  {cat:"Ламинационная пленка", us:"ГЛЯНЦЕВАЯ, 17 мкрн", them:"Gloss 18 мкрн, 3000 м (35–84 см)", comp:"Mars Paper", usp:43000, theirp:50000, type:"Точное"},
+  {cat:"Ламинационная пленка", us:"МАТОВАЯ, 17 мкрн", them:"Matt 18 мкрн, 3000 м (35–72 см)", comp:"Mars Paper", usp:43000, theirp:50000, type:"Точное"},
+  {cat:"Ламинационная пленка", us:"Золото, 20–22 мкрн", them:"Gold 18 мкрн (50 / 70 / 84 см)", comp:"Mars Paper", usp:115000, theirp:105000, type:"Потенциальное"},
+  {cat:"Ламинационная пленка", us:"Серебро, 20–22 мкрн", them:"Silver 18 мкрн (50 / 70 см)", comp:"Mars Paper", usp:110000, theirp:67000, type:"Потенциальное"},
+  {cat:"Целлюлозный картон", us:"Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", them:"FBB / APP (Китай) в рулонах, 270 г, 64–84 см (за кг)", comp:"Mars Paper", usp:14300, theirp:13000, type:"Потенциальное"},
+  {cat:"Целлюлозный картон", us:"Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", them:"FBB / APP (Китай), 250 г, 70×100, пачка 100 листов", comp:"Mars Paper", usp:2720, theirp:2500, type:"Точное"},
+  {cat:"Целлюлозный картон", us:"Целлюлозный картон 62×94, 270 г/м²", them:"FBB / APP (Китай), 250 г, 62×94, пачка 100 листов", comp:"Mars Paper", usp:2280, theirp:2200, type:"Потенциальное"},
 ];
 
-const compColors = {Yann:'badge-yann','Bit Trade':'badge-bit','Avanta Trade':'badge-avanta','Foil Trading':'badge-foil','Paper World':'badge-pw','AVA-TEN':'badge-avaten','Alfa Karton Savdo':'badge-alfa','Poytaxt Group':'badge-poytaxt'};
+const compColors = {Yann:'badge-yann','Bit Trade':'badge-bit','Avanta Trade':'badge-avanta','Foil Trading':'badge-foil','Paper World':'badge-pw','AVA-TEN':'badge-avaten','Alfa Karton Savdo':'badge-alfa','Poytaxt Group':'badge-poytaxt','Mars Paper':'badge-mars'};
 const cats = [...new Set(data.map(d=>d.cat))];
 const comps = [...new Set(data.map(d=>d.comp))];
 let activeComp = 'all', activeCat = 'all', searchQ = '';
