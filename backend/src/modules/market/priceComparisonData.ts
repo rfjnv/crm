@@ -3,7 +3,7 @@
 
 export type MatchType = 'Точное' | 'Потенциальное';
 
-export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading';
+export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World';
 
 export type PriceRow = {
   key: string;
@@ -144,4 +144,17 @@ export const PRICE_ROWS: PriceRow[] = [
   { key: "125", category: "Пантонные краски", ourProduct: "YELLOW", competitorProduct: "PANTONE Yellow", competitor: "Foil Trading" as Competitor, ourPrice: 140000, competitorPrice: 155000, matchType: "Точное" as MatchType },
   { key: "126", category: "Вспомогательные материалы", ourProduct: "Биговальный канал (разные размеры), 50 шт.", competitorProduct: "Creasing Matrix (Китай), пачка", competitor: "Foil Trading" as Competitor, ourPrice: 400000, competitorPrice: 400000, matchType: "Потенциальное" as MatchType },
   { key: "127", category: "Вспомогательные материалы", ourProduct: "Термоклей ELEPHANT (Китай), за кг", competitorProduct: "Термоклей белый (корешковый), за кг", competitor: "Foil Trading" as Competitor, ourPrice: 60000, competitorPrice: 60000, matchType: "Потенциальное" as MatchType },
+  { key: "128", category: "Мелованная бумага", ourProduct: "HI-KOTE 70×100 (глянец), 170 г/м²", competitorProduct: "Snow Eagle глянцевая, 170 г, 62×88 — 1 428 за лист (≈1 832 в пересчёте на 70×100)", competitor: "Paper World" as Competitor, ourPrice: 1790, competitorPrice: 1832, matchType: "Потенциальное" as MatchType },
+  { key: "129", category: "Мелованная бумага", ourProduct: "HI-KOTE 70×100 (глянец), 250 г/м²", competitorProduct: "Snow Eagle глянцевая, 250 г, 70×100", competitor: "Paper World" as Competitor, ourPrice: 2630, competitorPrice: 2695, matchType: "Точное" as MatchType },
+  { key: "130", category: "Мелованная бумага", ourProduct: "Мелованная 70×100 (матовая), 105 г/м²", competitorProduct: "Snow Eagle матовая, 105 г, 62×88 — 899 за лист (≈1 153 в пересчёте на 70×100)", competitor: "Paper World" as Competitor, ourPrice: 1120, competitorPrice: 1153, matchType: "Потенциальное" as MatchType },
+  { key: "131", category: "Ламинационная пленка", ourProduct: "ГЛЯНЦЕВАЯ, 17 мкрн", competitorProduct: "Глянцевая 18 микрон, 3000 м (30–62 см)", competitor: "Paper World" as Competitor, ourPrice: 43000, competitorPrice: 39900, matchType: "Точное" as MatchType },
+  { key: "132", category: "Ламинационная пленка", ourProduct: "МАТОВАЯ, 17 мкрн", competitorProduct: "Матовая 18 микрон, 3000 м (42–62 см)", competitor: "Paper World" as Competitor, ourPrice: 43000, competitorPrice: 41500, matchType: "Точное" as MatchType },
+  { key: "133", category: "Гребенки и расходники", ourProduct: "1/4 (6,4 мм), 84 000 витков", competitorProduct: "Металлическая пружина 1/4 (6,4 мм), 87 000 витков, шаг 1:3, чёрная", competitor: "Paper World" as Competitor, ourPrice: 900000, competitorPrice: 890000, matchType: "Точное" as MatchType },
+  { key: "134", category: "Гребенки и расходники", ourProduct: "5/16 (7,9 мм), 60 000 витков", competitorProduct: "Металлическая пружина 5/16 (7,9 мм), 60 000 витков, шаг 1:3, бронза / синяя", competitor: "Paper World" as Competitor, ourPrice: 1200000, competitorPrice: 940000, matchType: "Потенциальное" as MatchType },
+  { key: "135", category: "Гребенки и расходники", ourProduct: "3/8 (9,5 мм), 43 000 витков", competitorProduct: "Металлическая пружина 3/8 (9,5 мм), 42 000 витков, шаг 1:3, белая / чёрная", competitor: "Paper World" as Competitor, ourPrice: 1200000, competitorPrice: 890000, matchType: "Точное" as MatchType },
+  { key: "136", category: "Гребенки и расходники", ourProduct: "7/16 (11,1 мм), 32 000 витков", competitorProduct: "Металлическая пружина 7/16 (11,1 мм), 32 000 витков, шаг 1:3, белая", competitor: "Paper World" as Competitor, ourPrice: 900000, competitorPrice: 890000, matchType: "Точное" as MatchType },
+  { key: "137", category: "Гребенки и расходники", ourProduct: "Ригель 32, 100 шт.", competitorProduct: "Ригель для календарей 300 мм, белый, 100 шт. (2 400 за шт.)", competitor: "Paper World" as Competitor, ourPrice: 310000, competitorPrice: 240000, matchType: "Потенциальное" as MatchType },
+  { key: "138", category: "Гребенки и расходники", ourProduct: "Курсор для календарей, шт.", competitorProduct: "Курсор календарный", competitor: "Paper World" as Competitor, ourPrice: 1700, competitorPrice: 1400, matchType: "Точное" as MatchType },
+  { key: "139", category: "Вспомогательные материалы", ourProduct: "Биговальный канал (разные размеры), 50 шт.", competitorProduct: "Creasing Matrix 0,3×1,3 … 1,0×3,5, пачка", competitor: "Paper World" as Competitor, ourPrice: 400000, competitorPrice: 350000, matchType: "Потенциальное" as MatchType },
+  { key: "140", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", competitorProduct: "FBB GC1 в рулонах, 250 / 300 г, 62 см (за кг)", competitor: "Paper World" as Competitor, ourPrice: 14300, competitorPrice: 12096, matchType: "Потенциальное" as MatchType },
 ];

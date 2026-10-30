@@ -1,4 +1,4 @@
-export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading';
+export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World';
 
 export type TheirOnlyRow = {
   key: string;
@@ -37,6 +37,16 @@ const THEIR_ONLY_RAW: Array<Omit<TheirOnlyRow, 'key'>> = [
   { competitor: 'Foil Trading', category: 'Офсетные пластины', name: 'Термальные (CTP) и Аналоговые (PS) 775×605', price: null },
   { competitor: 'Foil Trading', category: 'Химия', name: 'MARK Ротоваш/смывка, 20 л', price: 50000 },
   { competitor: 'Avanta Trade', category: 'Дизайнерский картон', name: 'Дизайнерский картон 720×1040: Rubber Like, Euro Knight, Castle, Fabric Embossing и др. — 71 позиция, 10 300–62 500 за лист (прайс 13.03.2026)', price: null },
+  { competitor: 'Paper World', category: 'Бумага и картон', name: 'Мелованная бумага Snow Eagle глянцевая, 80 г, 70×100', price: 935 },
+  { competitor: 'Paper World', category: 'Бумага и картон', name: 'Мелованная бумага Snow Eagle глянцевая, 128 г, 70×100', price: 1380 },
+  { competitor: 'Paper World', category: 'Бумага и картон', name: 'Мелованная бумага Snow Eagle матовая, 200 г, 70×100', price: 2156 },
+  { competitor: 'Paper World', category: 'Бумага и картон', name: 'Мелованная бумага Snow Eagle матовая, 300 г, 70×100', price: 3234 },
+  { competitor: 'Paper World', category: 'Бумага и картон', name: 'Офсетная бумага Emerald plus в рулонах, 70 / 80 г (за кг)', price: 14000 },
+  { competitor: 'Paper World', category: 'Бумага и картон', name: 'Картон IP SUN Star Spark GC1 в рулонах, 190 г, 70 см (за кг)', price: 12500 },
+  { competitor: 'Paper World', category: 'Бумага и картон', name: 'Картон FBB GC1 в рулонах, 230 / 350 / 400 г (за кг)', price: 12096 },
+  { competitor: 'Paper World', category: 'Пленки для ламинации', name: 'Ламинационная плёнка 25 мкрн, 1000 м, 32 см, глянец / матовая (за кг)', price: 60000 },
+  { competitor: 'Paper World', category: 'Пленки для ламинации', name: 'Soft Touch Standart 25 мкрн, 60 см × 2000 м (за рулон)', price: 5400000 },
+  { competitor: 'Paper World', category: 'Переплетные материалы', name: 'Металлическая пружина 5/8 … 1\" (16–25,4 мм), шаг 1:2, белая / чёрная', price: 890000 },
 ];
 
 const OUR_ONLY_RAW: Array<Omit<OurOnlyRow, 'key'>> = [

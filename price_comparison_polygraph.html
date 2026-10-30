@@ -22,11 +22,13 @@ tr:hover td { background: var(--color-background-secondary); }
 .badge-bit { background: #EAF3DE; color: #27500A; }
 .badge-avanta { background: #FAEEDA; color: #633806; }
 .badge-foil { background: #FBEAF0; color: #72243E; }
+.badge-pw { background: #E6F4EA; color: #1E5631; }
 @media (prefers-color-scheme: dark) {
   .badge-yann { background: #0C447C; color: #B5D4F4; }
   .badge-bit { background: #27500A; color: #C0DD97; }
   .badge-avanta { background: #633806; color: #FAC775; }
   .badge-foil { background: #72243E; color: #F4C0D1; }
+  .badge-pw { background: #1E5631; color: #BFE7C9; }
 }
 .cheaper { color: #0F6E56; font-weight: 500; }
 .pricier { color: #A32D2D; font-weight: 500; }
@@ -201,9 +203,22 @@ const data = [
   {cat:"Пантонные краски", us:"YELLOW", them:"PANTONE Yellow", comp:"Foil Trading", usp:140000, theirp:155000, type:"Точное"},
   {cat:"Вспомогательные материалы", us:"Биговальный канал (разные размеры), 50 шт.", them:"Creasing Matrix (Китай), пачка", comp:"Foil Trading", usp:400000, theirp:400000, type:"Потенциальное"},
   {cat:"Вспомогательные материалы", us:"Термоклей ELEPHANT (Китай), за кг", them:"Термоклей белый (корешковый), за кг", comp:"Foil Trading", usp:60000, theirp:60000, type:"Потенциальное"},
+  {cat:"Мелованная бумага", us:"HI-KOTE 70×100 (глянец), 170 г/м²", them:"Snow Eagle глянцевая, 170 г, 62×88 — 1 428 за лист (≈1 832 в пересчёте на 70×100)", comp:"Paper World", usp:1790, theirp:1832, type:"Потенциальное"},
+  {cat:"Мелованная бумага", us:"HI-KOTE 70×100 (глянец), 250 г/м²", them:"Snow Eagle глянцевая, 250 г, 70×100", comp:"Paper World", usp:2630, theirp:2695, type:"Точное"},
+  {cat:"Мелованная бумага", us:"Мелованная 70×100 (матовая), 105 г/м²", them:"Snow Eagle матовая, 105 г, 62×88 — 899 за лист (≈1 153 в пересчёте на 70×100)", comp:"Paper World", usp:1120, theirp:1153, type:"Потенциальное"},
+  {cat:"Ламинационная пленка", us:"ГЛЯНЦЕВАЯ, 17 мкрн", them:"Глянцевая 18 микрон, 3000 м (30–62 см)", comp:"Paper World", usp:43000, theirp:39900, type:"Точное"},
+  {cat:"Ламинационная пленка", us:"МАТОВАЯ, 17 мкрн", them:"Матовая 18 микрон, 3000 м (42–62 см)", comp:"Paper World", usp:43000, theirp:41500, type:"Точное"},
+  {cat:"Гребенки и расходники", us:"1/4 (6,4 мм), 84 000 витков", them:"Металлическая пружина 1/4 (6,4 мм), 87 000 витков, шаг 1:3, чёрная", comp:"Paper World", usp:900000, theirp:890000, type:"Точное"},
+  {cat:"Гребенки и расходники", us:"5/16 (7,9 мм), 60 000 витков", them:"Металлическая пружина 5/16 (7,9 мм), 60 000 витков, шаг 1:3, бронза / синяя", comp:"Paper World", usp:1200000, theirp:940000, type:"Потенциальное"},
+  {cat:"Гребенки и расходники", us:"3/8 (9,5 мм), 43 000 витков", them:"Металлическая пружина 3/8 (9,5 мм), 42 000 витков, шаг 1:3, белая / чёрная", comp:"Paper World", usp:1200000, theirp:890000, type:"Точное"},
+  {cat:"Гребенки и расходники", us:"7/16 (11,1 мм), 32 000 витков", them:"Металлическая пружина 7/16 (11,1 мм), 32 000 витков, шаг 1:3, белая", comp:"Paper World", usp:900000, theirp:890000, type:"Точное"},
+  {cat:"Гребенки и расходники", us:"Ригель 32, 100 шт.", them:"Ригель для календарей 300 мм, белый, 100 шт. (2 400 за шт.)", comp:"Paper World", usp:310000, theirp:240000, type:"Потенциальное"},
+  {cat:"Гребенки и расходники", us:"Курсор для календарей, шт.", them:"Курсор календарный", comp:"Paper World", usp:1700, theirp:1400, type:"Точное"},
+  {cat:"Вспомогательные материалы", us:"Биговальный канал (разные размеры), 50 шт.", them:"Creasing Matrix 0,3×1,3 … 1,0×3,5, пачка", comp:"Paper World", usp:400000, theirp:350000, type:"Потенциальное"},
+  {cat:"Целлюлозный картон", us:"Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", them:"FBB GC1 в рулонах, 250 / 300 г, 62 см (за кг)", comp:"Paper World", usp:14300, theirp:12096, type:"Потенциальное"},
 ];
 
-const compColors = {Yann:'badge-yann','Bit Trade':'badge-bit','Avanta Trade':'badge-avanta','Foil Trading':'badge-foil'};
+const compColors = {Yann:'badge-yann','Bit Trade':'badge-bit','Avanta Trade':'badge-avanta','Foil Trading':'badge-foil','Paper World':'badge-pw'};
 const cats = [...new Set(data.map(d=>d.cat))];
 const comps = [...new Set(data.map(d=>d.comp))];
 let activeComp = 'all', activeCat = 'all', searchQ = '';

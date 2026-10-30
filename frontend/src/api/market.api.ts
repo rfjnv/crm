@@ -2,7 +2,7 @@ import client from './client';
 
 export type MatchType = 'Точное' | 'Потенциальное';
 
-export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading';
+export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World';
 
 /** Строка сравнения; наша цена уже взята из каталога CRM на сервере. */
 export type LivePriceRow = {
