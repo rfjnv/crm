@@ -1,4 +1,4 @@
-export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo';
+export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo' | 'Poytaxt Group';
 
 export type TheirOnlyRow = {
   key: string;
@@ -66,6 +66,16 @@ const THEIR_ONLY_RAW: Array<Omit<TheirOnlyRow, 'key'>> = [
   { competitor: 'Alfa Karton Savdo', category: 'Бумага и картон', name: 'Картон FBB с кремовым оборотом, 204–350 г, Финляндия, стоковый (за кг, с НДС)', price: 12400 },
   { competitor: 'Alfa Karton Savdo', category: 'Бумага и картон', name: 'Картон двусторонне мелованный SBS, 240 г, Финляндия (за кг, с НДС)', price: 13500 },
   { competitor: 'Alfa Karton Savdo', category: 'Бумага и картон', name: 'Картон ALBA GC2, 200 / 225 г, Финляндия (за кг, с НДС)', price: 13600 },
+  { competitor: 'Poytaxt Group', category: 'Бумага и картон', name: 'Картон NorthStar FBB Super Bulk в рулонах, 245–290 г (за кг, с НДС)', price: 13794 },
+  { competitor: 'Poytaxt Group', category: 'Бумага и картон', name: 'Картон Добруш GC-2 (Беларусь) в рулонах, 190–330 г, без претензий (за кг, с НДС)', price: 13915 },
+  { competitor: 'Poytaxt Group', category: 'Бумага и картон', name: 'Картон ПЭ (пищевой) для стаканов и боксов, 230–272 г (за кг, с НДС)', price: 13673 },
+  { competitor: 'Poytaxt Group', category: 'Бумага и картон', name: 'Картон ПЭТ (пищевой) для боксов, чёрный оборот, 230–264 г (за кг, с НДС)', price: 11979 },
+  { competitor: 'Poytaxt Group', category: 'Бумага и картон', name: 'Целлюлозный картон с крафт оборотом, 205–332 г (за кг, с НДС)', price: 14762 },
+  { competitor: 'Poytaxt Group', category: 'Бумага и картон', name: 'Лайнер мелованный Top-liner Komiwhite (Монди), 100–160 г (за кг, с НДС)', price: 17787 },
+  { competitor: 'Poytaxt Group', category: 'Бумага и картон', name: 'Унилайнер / крафтлайнер Архангельский ЦБК, 70–275 г (за кг, с НДС)', price: 12100 },
+  { competitor: 'Poytaxt Group', category: 'Бумага и картон', name: 'Лайнер Metsä Board (Финляндия), двукратное мелование, 130–175 г (за кг, с НДС)', price: 15004 },
+  { competitor: 'Poytaxt Group', category: 'Бумага и картон', name: 'Test-Liner макулатурный (Германия), 130–180 г (за кг, с НДС)', price: 13310 },
+  { competitor: 'Poytaxt Group', category: 'Бумага и картон', name: 'Этикеточная бумага невлагостойкая (Финляндия), 45–90 г (за кг, с НДС)', price: 20570 },
 ];
 
 const OUR_ONLY_RAW: Array<Omit<OurOnlyRow, 'key'>> = [
