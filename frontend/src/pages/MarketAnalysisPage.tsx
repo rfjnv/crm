@@ -22,6 +22,7 @@ const competitorColor: Record<Competitor, string> = {
   'Avanta Trade': 'gold',
   'Foil Trading': 'magenta',
   'Paper World': 'green',
+  'AVA-TEN': 'volcano',
 };
 
 function formatMoney(value: number | null): string {

@@ -320,7 +320,7 @@ async function marketComparison(input: MarketInput, allowCost = false) {
   });
 
   return {
-    note: 'Цены конкурентов — из их прайсов (Yann 07.09.2026, Foil Trading 21.09.2026, Avanta 13.10.2026, Paper World: меловка 02.10.2026, плёнка и гребёнки 15.06.2026, картон 18.09.2026, Bit Trade — старый прайс). Наша цена — из каталога CRM; our_price_from_catalog=false значит, что в каталоге цены нет и взята цена из прайса.' + (allowCost ? ' purchase_price — самая высокая закупка среди привязанных артикулов.' : ' Себестоимость закрыта.'),
+    note: 'Цены конкурентов — из их прайсов (Yann 07.09.2026, Foil Trading 21.09.2026, Avanta 13.10.2026, Paper World: меловка 02.10.2026, плёнка и гребёнки 15.06.2026, картон 18.09.2026, AVA-TEN 20.10.2026 — цены с НДС 12%, Bit Trade — старый прайс). Наша цена — из каталога CRM; our_price_from_catalog=false значит, что в каталоге цены нет и взята цена из прайса.' + (allowCost ? ' purchase_price — самая высокая закупка среди привязанных артикулов.' : ' Себестоимость закрыта.'),
     price_rows: priceRows,
     ...(input.include_unique
       ? { competitor_only_products: THEIR_ONLY_ROWS, our_only_products: OUR_ONLY_ROWS }
@@ -334,7 +334,7 @@ export const ROP_AGENT_TOOLS: Anthropic.Tool[] = [
   {
     name: 'market_comparison',
     description:
-      'Сравнение наших цен с ценами конкурентов (Yann, Bit Trade, Avanta Trade, Foil Trading, Paper World) по совпадающим товарам. '
+      'Сравнение наших цен с ценами конкурентов (Yann, Bit Trade, Avanta Trade, Foil Trading, Paper World, AVA-TEN) по совпадающим товарам. '
       + 'По каждой строке сразу даёт наш остаток на складе и продажи за 90 дней, а в чате с себестоимостью — '
       + 'ещё закупку, маржу сейчас и маржу по цене конкурента. '
       + 'Используй для ценовых стратегий (демпинг, выравнивание, удержание цены). '

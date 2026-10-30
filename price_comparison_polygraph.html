@@ -23,12 +23,14 @@ tr:hover td { background: var(--color-background-secondary); }
 .badge-avanta { background: #FAEEDA; color: #633806; }
 .badge-foil { background: #FBEAF0; color: #72243E; }
 .badge-pw { background: #E6F4EA; color: #1E5631; }
+.badge-avaten { background: #FDECE4; color: #8A2E0C; }
 @media (prefers-color-scheme: dark) {
   .badge-yann { background: #0C447C; color: #B5D4F4; }
   .badge-bit { background: #27500A; color: #C0DD97; }
   .badge-avanta { background: #633806; color: #FAC775; }
   .badge-foil { background: #72243E; color: #F4C0D1; }
   .badge-pw { background: #1E5631; color: #BFE7C9; }
+  .badge-avaten { background: #8A2E0C; color: #FBD0BC; }
 }
 .cheaper { color: #0F6E56; font-weight: 500; }
 .pricier { color: #A32D2D; font-weight: 500; }
@@ -216,9 +218,15 @@ const data = [
   {cat:"Гребенки и расходники", us:"Курсор для календарей, шт.", them:"Курсор календарный", comp:"Paper World", usp:1700, theirp:1400, type:"Точное"},
   {cat:"Вспомогательные материалы", us:"Биговальный канал (разные размеры), 50 шт.", them:"Creasing Matrix 0,3×1,3 … 1,0×3,5, пачка", comp:"Paper World", usp:400000, theirp:350000, type:"Потенциальное"},
   {cat:"Целлюлозный картон", us:"Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", them:"FBB GC1 в рулонах, 250 / 300 г, 62 см (за кг)", comp:"Paper World", usp:14300, theirp:12096, type:"Потенциальное"},
+  {cat:"Мелованная бумага", us:"HI-KOTE 70×100 (глянец), 170 г/м²", them:"Art Paper глянцевая, 170 г, 70×100 (с НДС)", comp:"AVA-TEN", usp:1790, theirp:1820, type:"Точное"},
+  {cat:"Мелованная бумага", us:"HI-KOTE 70×100 (глянец), 250 г/м²", them:"Art Paper глянцевая, 250 г, 62×94 — 2 240 за лист (≈2 690 в пересчёте на 70×100, с НДС)", comp:"AVA-TEN", usp:2630, theirp:2690, type:"Потенциальное"},
+  {cat:"Мелованная бумага", us:"Мелованная 70×100 (матовая), 105 г/м²", them:"Art Paper матовая, 105 г, 70×100 (с НДС)", comp:"AVA-TEN", usp:1120, theirp:1120, type:"Точное"},
+  {cat:"Целлюлозный картон", us:"Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", them:"SNOW WHITE BOARD, 250 г, 70×100 (с НДС)", comp:"AVA-TEN", usp:2720, theirp:2296, type:"Точное"},
+  {cat:"Целлюлозный картон", us:"Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", them:"ALLYKING CREAM GC2 HI BULK, 250 г, 70×100 (с НДС)", comp:"AVA-TEN", usp:2720, theirp:2380, type:"Потенциальное"},
+  {cat:"Целлюлозный картон", us:"Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", them:"C1S IVORY BOARD (Little Star) в рулонах, 270 г, 62 см (за кг, с НДС)", comp:"AVA-TEN", usp:14300, theirp:12432, type:"Точное"},
 ];
 
-const compColors = {Yann:'badge-yann','Bit Trade':'badge-bit','Avanta Trade':'badge-avanta','Foil Trading':'badge-foil','Paper World':'badge-pw'};
+const compColors = {Yann:'badge-yann','Bit Trade':'badge-bit','Avanta Trade':'badge-avanta','Foil Trading':'badge-foil','Paper World':'badge-pw','AVA-TEN':'badge-avaten'};
 const cats = [...new Set(data.map(d=>d.cat))];
 const comps = [...new Set(data.map(d=>d.comp))];
 let activeComp = 'all', activeCat = 'all', searchQ = '';

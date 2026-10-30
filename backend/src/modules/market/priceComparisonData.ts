@@ -3,7 +3,7 @@
 
 export type MatchType = 'Точное' | 'Потенциальное';
 
-export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World';
+export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN';
 
 export type PriceRow = {
   key: string;
@@ -157,4 +157,10 @@ export const PRICE_ROWS: PriceRow[] = [
   { key: "138", category: "Гребенки и расходники", ourProduct: "Курсор для календарей, шт.", competitorProduct: "Курсор календарный", competitor: "Paper World" as Competitor, ourPrice: 1700, competitorPrice: 1400, matchType: "Точное" as MatchType },
   { key: "139", category: "Вспомогательные материалы", ourProduct: "Биговальный канал (разные размеры), 50 шт.", competitorProduct: "Creasing Matrix 0,3×1,3 … 1,0×3,5, пачка", competitor: "Paper World" as Competitor, ourPrice: 400000, competitorPrice: 350000, matchType: "Потенциальное" as MatchType },
   { key: "140", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", competitorProduct: "FBB GC1 в рулонах, 250 / 300 г, 62 см (за кг)", competitor: "Paper World" as Competitor, ourPrice: 14300, competitorPrice: 12096, matchType: "Потенциальное" as MatchType },
+  { key: "141", category: "Мелованная бумага", ourProduct: "HI-KOTE 70×100 (глянец), 170 г/м²", competitorProduct: "Art Paper глянцевая, 170 г, 70×100 (с НДС)", competitor: "AVA-TEN" as Competitor, ourPrice: 1790, competitorPrice: 1820, matchType: "Точное" as MatchType },
+  { key: "142", category: "Мелованная бумага", ourProduct: "HI-KOTE 70×100 (глянец), 250 г/м²", competitorProduct: "Art Paper глянцевая, 250 г, 62×94 — 2 240 за лист (≈2 690 в пересчёте на 70×100, с НДС)", competitor: "AVA-TEN" as Competitor, ourPrice: 2630, competitorPrice: 2690, matchType: "Потенциальное" as MatchType },
+  { key: "143", category: "Мелованная бумага", ourProduct: "Мелованная 70×100 (матовая), 105 г/м²", competitorProduct: "Art Paper матовая, 105 г, 70×100 (с НДС)", competitor: "AVA-TEN" as Competitor, ourPrice: 1120, competitorPrice: 1120, matchType: "Точное" as MatchType },
+  { key: "144", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", competitorProduct: "SNOW WHITE BOARD, 250 г, 70×100 (с НДС)", competitor: "AVA-TEN" as Competitor, ourPrice: 2720, competitorPrice: 2296, matchType: "Точное" as MatchType },
+  { key: "145", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", competitorProduct: "ALLYKING CREAM GC2 HI BULK, 250 г, 70×100 (с НДС)", competitor: "AVA-TEN" as Competitor, ourPrice: 2720, competitorPrice: 2380, matchType: "Потенциальное" as MatchType },
+  { key: "146", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", competitorProduct: "C1S IVORY BOARD (Little Star) в рулонах, 270 г, 62 см (за кг, с НДС)", competitor: "AVA-TEN" as Competitor, ourPrice: 14300, competitorPrice: 12432, matchType: "Точное" as MatchType },
 ];

@@ -1,4 +1,4 @@
-export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World';
+export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN';
 
 export type TheirOnlyRow = {
   key: string;
@@ -47,6 +47,15 @@ const THEIR_ONLY_RAW: Array<Omit<TheirOnlyRow, 'key'>> = [
   { competitor: 'Paper World', category: 'Пленки для ламинации', name: 'Ламинационная плёнка 25 мкрн, 1000 м, 32 см, глянец / матовая (за кг)', price: 60000 },
   { competitor: 'Paper World', category: 'Пленки для ламинации', name: 'Soft Touch Standart 25 мкрн, 60 см × 2000 м (за рулон)', price: 5400000 },
   { competitor: 'Paper World', category: 'Переплетные материалы', name: 'Металлическая пружина 5/8 … 1\" (16–25,4 мм), шаг 1:2, белая / чёрная', price: 890000 },
+  { competitor: 'AVA-TEN', category: 'Бумага и картон', name: 'COATED WHITE TOP TESTLINER в рулонах, 140 г (за кг, с НДС)', price: 12992 },
+  { competitor: 'AVA-TEN', category: 'Бумага и картон', name: 'C1S IVORY BOARD (Little Star) в рулонах, 170–400 г (за кг, с НДС)', price: 12432 },
+  { competitor: 'AVA-TEN', category: 'Бумага и картон', name: 'SMART ULTRA HIGH BULK BOARD в рулонах, 215–305 г (за кг, с НДС)', price: 13552 },
+  { competitor: 'AVA-TEN', category: 'Бумага и картон', name: 'ALLYKING CREAM GC2 HI BULK в рулонах, 250 г, 70 см (за кг, с НДС)', price: 15568 },
+  { competitor: 'AVA-TEN', category: 'Бумага и картон', name: 'Белорусский картон трёхслойный мелованный в рулонах, 190 г (за кг, акция, без возврата)', price: 10640 },
+  { competitor: 'AVA-TEN', category: 'Бумага и картон', name: 'Мелованная Art Paper глянцевая / матовая, 200 г, 70×100 (с НДС)', price: 2128 },
+  { competitor: 'AVA-TEN', category: 'Дизайнерский картон', name: 'Fedrigoni SIRIO E20 (тиснение «лён»), 290 г, 70×100 (с НДС)', price: 16576 },
+  { competitor: 'AVA-TEN', category: 'Дизайнерский картон', name: 'Fedrigoni NETTUNO GRIGIO, 280 г, 72×101 (с НДС)', price: 14672 },
+  { competitor: 'AVA-TEN', category: 'Дизайнерский картон', name: 'Fedrigoni CONSTELLATION JADE (серебристый шёлк), 215 г, 70×100 (с НДС)', price: 11200 },
 ];
 
 const OUR_ONLY_RAW: Array<Omit<OurOnlyRow, 'key'>> = [
