@@ -3,7 +3,7 @@
 
 export type MatchType = 'Точное' | 'Потенциальное';
 
-export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN';
+export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo';
 
 export type PriceRow = {
   key: string;
@@ -163,4 +163,7 @@ export const PRICE_ROWS: PriceRow[] = [
   { key: "144", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", competitorProduct: "SNOW WHITE BOARD, 250 г, 70×100 (с НДС)", competitor: "AVA-TEN" as Competitor, ourPrice: 2720, competitorPrice: 2296, matchType: "Точное" as MatchType },
   { key: "145", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", competitorProduct: "ALLYKING CREAM GC2 HI BULK, 250 г, 70×100 (с НДС)", competitor: "AVA-TEN" as Competitor, ourPrice: 2720, competitorPrice: 2380, matchType: "Потенциальное" as MatchType },
   { key: "146", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", competitorProduct: "C1S IVORY BOARD (Little Star) в рулонах, 270 г, 62 см (за кг, с НДС)", competitor: "AVA-TEN" as Competitor, ourPrice: 14300, competitorPrice: 12432, matchType: "Точное" as MatchType },
+  { key: "147", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", competitorProduct: "Silverpak GC1 (Китай) в рулонах, 270 г, 66 см (за кг, с НДС)", competitor: "Alfa Karton Savdo" as Competitor, ourPrice: 14300, competitorPrice: 13200, matchType: "Потенциальное" as MatchType },
+  { key: "148", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", competitorProduct: "C1S IVORY BOARD (Китай) в рулонах, 250 / 300 г, 62 см (за кг, с НДС)", competitor: "Alfa Karton Savdo" as Competitor, ourPrice: 14300, competitorPrice: 13000, matchType: "Потенциальное" as MatchType },
+  { key: "149", category: "Целлюлозный картон", ourProduct: "Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", competitorProduct: "C1S IVORY BOARD (Китай), 250 г, 70×100, в паллетах — 13 100 за кг (≈2 293 за лист, с НДС)", competitor: "Alfa Karton Savdo" as Competitor, ourPrice: 2720, competitorPrice: 2293, matchType: "Потенциальное" as MatchType },
 ];

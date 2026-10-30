@@ -1,4 +1,4 @@
-export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN';
+export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo';
 
 export type TheirOnlyRow = {
   key: string;
@@ -56,6 +56,16 @@ const THEIR_ONLY_RAW: Array<Omit<TheirOnlyRow, 'key'>> = [
   { competitor: 'AVA-TEN', category: 'Дизайнерский картон', name: 'Fedrigoni SIRIO E20 (тиснение «лён»), 290 г, 70×100 (с НДС)', price: 16576 },
   { competitor: 'AVA-TEN', category: 'Дизайнерский картон', name: 'Fedrigoni NETTUNO GRIGIO, 280 г, 72×101 (с НДС)', price: 14672 },
   { competitor: 'AVA-TEN', category: 'Дизайнерский картон', name: 'Fedrigoni CONSTELLATION JADE (серебристый шёлк), 215 г, 70×100 (с НДС)', price: 11200 },
+  { competitor: 'Alfa Karton Savdo', category: 'Бумага и картон', name: 'Целлюлозный картон с чёрным / белым ПЭТ покрытием, 260–384 г (за кг, с НДС)', price: 12500 },
+  { competitor: 'Alfa Karton Savdo', category: 'Бумага и картон', name: 'Макулатурный картон дуплекс, мелованный, бурый оборот, 340 г (за кг, с НДС)', price: 11000 },
+  { competitor: 'Alfa Karton Savdo', category: 'Бумага и картон', name: 'Картон для стаканчиков с ПЭ покрытием, 155–170 г + 15 PE, Европа (за кг, с НДС)', price: 15500 },
+  { competitor: 'Alfa Karton Savdo', category: 'Бумага и картон', name: 'Картон мелованный с крафт оборотом, 180–350 г, Финляндия / Швеция (за кг, с НДС)', price: 15100 },
+  { competitor: 'Alfa Karton Savdo', category: 'Бумага и картон', name: 'Картон мелованный Gray Brown (GB), 227–262 г, Финляндия / Швеция (за кг, с НДС)', price: 14200 },
+  { competitor: 'Alfa Karton Savdo', category: 'Бумага и картон', name: 'Картон немелованный / крафт, 210–250 г, Финляндия / Швеция (за кг, с НДС)', price: 12000 },
+  { competitor: 'Alfa Karton Savdo', category: 'Бумага и картон', name: 'Картон с барьерным покрытием (для пищи), 200–325 г, Финляндия (за кг, с НДС)', price: 14200 },
+  { competitor: 'Alfa Karton Savdo', category: 'Бумага и картон', name: 'Картон FBB с кремовым оборотом, 204–350 г, Финляндия, стоковый (за кг, с НДС)', price: 12400 },
+  { competitor: 'Alfa Karton Savdo', category: 'Бумага и картон', name: 'Картон двусторонне мелованный SBS, 240 г, Финляндия (за кг, с НДС)', price: 13500 },
+  { competitor: 'Alfa Karton Savdo', category: 'Бумага и картон', name: 'Картон ALBA GC2, 200 / 225 г, Финляндия (за кг, с НДС)', price: 13600 },
 ];
 
 const OUR_ONLY_RAW: Array<Omit<OurOnlyRow, 'key'>> = [

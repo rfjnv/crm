@@ -24,6 +24,7 @@ tr:hover td { background: var(--color-background-secondary); }
 .badge-foil { background: #FBEAF0; color: #72243E; }
 .badge-pw { background: #E6F4EA; color: #1E5631; }
 .badge-avaten { background: #FDECE4; color: #8A2E0C; }
+.badge-alfa { background: #EEF7DC; color: #3F5F0F; }
 @media (prefers-color-scheme: dark) {
   .badge-yann { background: #0C447C; color: #B5D4F4; }
   .badge-bit { background: #27500A; color: #C0DD97; }
@@ -31,6 +32,7 @@ tr:hover td { background: var(--color-background-secondary); }
   .badge-foil { background: #72243E; color: #F4C0D1; }
   .badge-pw { background: #1E5631; color: #BFE7C9; }
   .badge-avaten { background: #8A2E0C; color: #FBD0BC; }
+  .badge-alfa { background: #3F5F0F; color: #D6EDAE; }
 }
 .cheaper { color: #0F6E56; font-weight: 500; }
 .pricier { color: #A32D2D; font-weight: 500; }
@@ -224,9 +226,12 @@ const data = [
   {cat:"Целлюлозный картон", us:"Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", them:"SNOW WHITE BOARD, 250 г, 70×100 (с НДС)", comp:"AVA-TEN", usp:2720, theirp:2296, type:"Точное"},
   {cat:"Целлюлозный картон", us:"Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", them:"ALLYKING CREAM GC2 HI BULK, 250 г, 70×100 (с НДС)", comp:"AVA-TEN", usp:2720, theirp:2380, type:"Потенциальное"},
   {cat:"Целлюлозный картон", us:"Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", them:"C1S IVORY BOARD (Little Star) в рулонах, 270 г, 62 см (за кг, с НДС)", comp:"AVA-TEN", usp:14300, theirp:12432, type:"Точное"},
+  {cat:"Целлюлозный картон", us:"Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", them:"Silverpak GC1 (Китай) в рулонах, 270 г, 66 см (за кг, с НДС)", comp:"Alfa Karton Savdo", usp:14300, theirp:13200, type:"Потенциальное"},
+  {cat:"Целлюлозный картон", us:"Целлюлозный картон в рулонах 270 г/м², 62 см (за кг)", them:"C1S IVORY BOARD (Китай) в рулонах, 250 / 300 г, 62 см (за кг, с НДС)", comp:"Alfa Karton Savdo", usp:14300, theirp:13000, type:"Потенциальное"},
+  {cat:"Целлюлозный картон", us:"Целлюлозный картон 70×100, 250 г/м² (Индия / Китай)", them:"C1S IVORY BOARD (Китай), 250 г, 70×100, в паллетах — 13 100 за кг (≈2 293 за лист, с НДС)", comp:"Alfa Karton Savdo", usp:2720, theirp:2293, type:"Потенциальное"},
 ];
 
-const compColors = {Yann:'badge-yann','Bit Trade':'badge-bit','Avanta Trade':'badge-avanta','Foil Trading':'badge-foil','Paper World':'badge-pw','AVA-TEN':'badge-avaten'};
+const compColors = {Yann:'badge-yann','Bit Trade':'badge-bit','Avanta Trade':'badge-avanta','Foil Trading':'badge-foil','Paper World':'badge-pw','AVA-TEN':'badge-avaten','Alfa Karton Savdo':'badge-alfa'};
 const cats = [...new Set(data.map(d=>d.cat))];
 const comps = [...new Set(data.map(d=>d.comp))];
 let activeComp = 'all', activeCat = 'all', searchQ = '';
