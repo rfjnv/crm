@@ -185,6 +185,85 @@
   color: var(--gb-text-3);
 }
 
+/* Год к году: под каждым месяцем разница с прошлым годом, ниже — итог */
+.goals-yoy {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 3px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.goals-yoy > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.goals-yoy__up { color: var(--c-pos-fg, var(--ant-color-success)); }
+.goals-yoy__down { color: var(--c-neg-fg, var(--ant-color-error)); }
+
+.goals-yoy__na {
+  font-weight: 500;
+  color: var(--gb-text-3);
+}
+
+.goals-yoy-sum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--gb-text-2);
+}
+
+.goals-yoy-sum b {
+  font-weight: 650;
+  color: var(--gb-text-1);
+}
+
+/* Подсказка шире стандартной: суммы с «so'm» не должны переноситься */
+.goals-yoy-tooltip {
+  max-width: 420px;
+}
+
+.goals-yoy-tip {
+  white-space: nowrap;
+  font-size: 12.5px;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+
+.goals-yoy-tip__goal {
+  opacity: 0.7;
+}
+
+@media (max-width: 767px) {
+  /* На телефоне в клетку шириной ~25px влезают только проценты */
+  .goals-yoy {
+    gap: 2px;
+    font-size: 9.5px;
+    letter-spacing: -0.02em;
+  }
+
+  .goals-yoy > span {
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  /* «%» не влезает — что это проценты, видно по итогу ниже */
+  .goals-yoy .goals-yoy__pc {
+    display: none;
+  }
+
+  .goals-yoy__ahead {
+    visibility: hidden;
+  }
+}
+
 @media (max-width: 767px) {
   .goals-block__legend {
     display: none;

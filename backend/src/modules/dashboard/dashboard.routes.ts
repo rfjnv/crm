@@ -39,6 +39,29 @@ function buildGoals(rows: { day: Date | string; total: string }[], year: number,
   return { year, month: month + 1, revenueYear, days, months };
 }
 
+/**
+ * Прошлый год для блока «Цели»: выручка по месяцам и суммы «на ту же дату» — текущий
+ * неполный месяц и год сравниваем с теми же числами год назад, а не с целым месяцем.
+ * `monthDay` — сегодняшние 'MM-DD'.
+ */
+function buildPrevYear(rows: { day: Date | string; total: string }[], year: number, month: number, monthDay: string) {
+  const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, total: 0 }));
+  const monthPrefix = `${String(month + 1).padStart(2, '0')}-`;
+  let monthToDate = 0;
+  let yearToDate = 0;
+  for (const r of rows) {
+    const md = dayKey(r.day).slice(5);
+    const total = Number(r.total) || 0;
+    const m = Number(md.slice(0, 2));
+    if (m >= 1 && m <= 12) months[m - 1].total += total;
+    if (md <= monthDay) {
+      yearToDate += total;
+      if (md.startsWith(monthPrefix)) monthToDate += total;
+    }
+  }
+  return { year, months, monthToDate, yearToDate };
+}
+
 const router = Router();
 
 router.use(authenticate);
@@ -228,6 +251,9 @@ router.get(
     // Блок «Цели»: выручка по дням с начала года — из неё клетки дней месяца и месяцев года
     // Сбой здесь не должен ронять весь дашборд (и висеть необработанным отказом) — цели просто пустые
     const goalsDaysPromise = revenueByDayInRange(startOfYear, startOfTomorrow)
+      .catch(() => [] as { day: Date; total: string }[]);
+    // Тот же год назад целиком — сравнение по месяцам в ряду года
+    const goalsPrevYearPromise = revenueByDayInRange(new Date(Date.UTC(y - 1, 0, 1) - TASHKENT_OFFSET), startOfYear)
       .catch(() => [] as { day: Date; total: string }[]);
 
     // Блок «Выручка за 30 дней»: тот же отрезок прямо перед графиком — для «+N% к прошлым»
@@ -532,7 +558,13 @@ router.get(
       /** Выручка за такой же отрезок перед графиком и закрытые за время графика */
       chartPrevTotal: chartPrevAgg[0] ? Number(chartPrevAgg[0].total) : 0,
       closedInChart: closedChartRows.length,
-      goals: buildGoals(await goalsDaysPromise, y, mo),
+      goals: {
+        ...buildGoals(await goalsDaysPromise, y, mo),
+        prevYear: buildPrevYear(
+          await goalsPrevYearPromise, y - 1, mo,
+          `${String(mo + 1).padStart(2, '0')}-${String(dy).padStart(2, '0')}`,
+        ),
+      },
       activeDealsCount,
       totalDebt: grossDebt,
       closedDealsToday: closedDealsPeriod,

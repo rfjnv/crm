@@ -738,6 +738,8 @@ export interface DashboardSummary {
     revenueYear: number;
     days: { day: string; total: number }[];
     months: { month: number; total: number }[];
+    /** Тот же год назад: по месяцам и «на ту же дату» (текущий месяц и год) */
+    prevYear?: { year: number; months: { month: number; total: number }[]; monthToDate: number; yearToDate: number };
   };
   activeDealsCount: number;
   totalDebt: number;
