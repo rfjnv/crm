@@ -229,6 +229,13 @@ export default function CashboxV2Page() {
     return [...map.values()].sort((a, b) => b.debt - a.debt);
   }, [filteredDeals]);
 
+  // «По сделкам» кассир ищет только что оформленный заказ — новые сверху.
+  // (filteredDeals остаётся от старых к новым: в этом порядке раскладывается оплата.)
+  const dealsNewestFirst = useMemo(
+    () => [...filteredDeals].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [filteredDeals],
+  );
+
   // В «К оплате» только должники; клиента без долга (пришёл с предоплатой) ищем на сервере.
   const debouncedSearch = useDebouncedValue(search.trim(), 300);
   const { data: searchHits } = useQuery({
@@ -429,7 +436,7 @@ export default function CashboxV2Page() {
         ) : (
           <List
             loading={toPayLoading}
-            dataSource={filteredDeals}
+            dataSource={dealsNewestFirst}
             locale={{ emptyText: <Empty description={emptyToPay} /> }}
             pagination={{ pageSize: 20, size: 'small' }}
             renderItem={(r) => (
@@ -464,7 +471,7 @@ export default function CashboxV2Page() {
         />
       ) : (
         <Table
-          dataSource={filteredDeals}
+          dataSource={dealsNewestFirst}
           columns={dealColumns}
           rowKey="dealId"
           loading={toPayLoading}
