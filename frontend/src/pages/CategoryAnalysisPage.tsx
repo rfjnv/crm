@@ -679,8 +679,6 @@ export default function CategoryAnalysisPage() {
             />
           </Section>
 
-          {category && <CategoryClientProducts data={data} short={short} />}
-
           <div className="cat-grid cat-grid--wide-left">
             <Section title={category ? 'Клиенты категории' : 'Клиенты'} count={clients.length}>
               <div className="cat-tools">
@@ -711,6 +709,9 @@ export default function CategoryAnalysisPage() {
               <Table size="small" rowKey="id" columns={managerColumns} dataSource={data.managers} pagination={false} scroll={{ x: 560 }} />
             </Section>
           </div>
+
+          {/* Длинный список — в самом низу страницы, на всю ширину */}
+          {category && <CategoryClientProducts data={data} short={short} />}
 
           <Text type="secondary" className="cat-note">
             Выручка — как во всей аналитике CRM: закрытые сделки и сессионные, по дате позиции, по Ташкенту.
