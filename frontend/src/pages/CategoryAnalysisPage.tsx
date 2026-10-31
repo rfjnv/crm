@@ -48,6 +48,25 @@ const delta = (v: number | null, digits: 0 | 1 = 0) => formatPercent(v, digits, 
 const tone = (v: number | null): StatusTone => (v == null ? 'neutral' : v > 2 ? 'positive' : v < -2 ? 'negative' : 'neutral');
 const signedMoney = (v: number) => (v > 0 ? `+${money(v)}` : money(v));
 
+/**
+ * Внутри категории названия часто начинаются одинаково («Термоклей в гранулах Q2000»):
+ * на графиках оставляем отличающуюся часть. Название, которое целиком равно общему началу,
+ * остаётся как есть. Полное — в подсказке.
+ */
+function shortNames(names: string[]): Map<string, string> {
+  const out = new Map(names.map((n) => [n, n]));
+  const words = [...new Set(names)].map((n) => n.trim().split(/\s+/));
+  if (words.length < 2) return out;
+  let common = 0;
+  while (words.every((w) => w[common] != null && w[common] === words[0][common])) common += 1;
+  if (common < 2) return out;
+  for (const n of names) {
+    const rest = n.trim().split(/\s+/).slice(common).join(' ');
+    out.set(n, rest || n);
+  }
+  return out;
+}
+
 function Change({ value, digits = 0 }: { value: number | null; digits?: 0 | 1 }) {
   if (value == null) return <span className="cat-new">новое</span>;
   return <span className={`cat-chg cat-chg--${tone(value)}`}>{delta(value, digits)}</span>;
@@ -87,7 +106,7 @@ function Sparkline({ values }: { values: number[] }) {
 
 /** Горизонтальные полосы «сейчас / год назад» — подписи категорий читаются целиком. */
 function PairBars({ rows, selected, onPick }: {
-  rows: { key: string; name: string; cur: number; prev: number; change: number | null }[];
+  rows: { key: string; name: string; full?: string; cur: number; prev: number; change: number | null }[];
   selected?: string | null;
   onPick?: (key: string) => void;
 }) {
@@ -97,7 +116,7 @@ function PairBars({ rows, selected, onPick }: {
       {rows.map((r) => {
         const body = (
           <>
-            <span className="cat-pairs__name" title={r.name}>{r.name}</span>
+            <span className="cat-pairs__name" title={r.full ?? r.name}>{r.name}</span>
             <span className="cat-pairs__bars">
               <span className="cat-pairs__cur" style={{ width: `${(r.cur / max) * 100}%` }} />
               <span className="cat-pairs__prev" style={{ width: `${(r.prev / max) * 100}%` }} />
@@ -120,7 +139,7 @@ function PairBars({ rows, selected, onPick }: {
 
 /** Разница с прошлым годом: влево — потеря, вправо — прирост. */
 function DeltaBars({ rows, onPick }: {
-  rows: { key: string; name: string; delta: number }[];
+  rows: { key: string; name: string; full?: string; delta: number }[];
   onPick?: (key: string) => void;
 }) {
   const max = Math.max(1, ...rows.map((r) => Math.abs(r.delta)));
@@ -130,7 +149,7 @@ function DeltaBars({ rows, onPick }: {
         const w = `${(Math.abs(r.delta) / max) * 50}%`;
         const body = (
           <>
-            <span className="cat-delta__name" title={r.name}>{r.name}</span>
+            <span className="cat-delta__name" title={r.full ?? r.name}>{r.name}</span>
             <span className="cat-delta__track">
               <span className="cat-delta__axis" />
               <span
@@ -313,6 +332,8 @@ export default function CategoryAnalysisPage() {
   });
 
   const catRows = useMemo(() => (data?.categories ?? []).filter((c) => c.rev > 0 || c.revPrev > 0), [data]);
+  const shortMap = useMemo(() => shortNames(data?.category ? data.products.map((x) => x.name) : []), [data]);
+  const short = (name: string) => shortMap.get(name) ?? name;
 
   const monthCompare = useMemo(() => {
     if (!data) return [];
@@ -325,7 +346,7 @@ export default function CategoryAnalysisPage() {
 
   const stack = useMemo(() => {
     if (!data) return { rows: [] as { month: string; name: string; value: number }[], names: [] as string[], keys: [] as string[] };
-    const label = (k: string) => (k === OTHER_KEY ? 'Остальные' : data.category ? (data.productNames?.[k] ?? k) : k);
+    const label = (k: string) => (k === OTHER_KEY ? 'Остальные' : data.category ? short(data.productNames?.[k] ?? k) : k);
     let keys: string[];
     if (data.category) keys = [...new Set(data.monthly.map((r) => r.key))].sort((a, b) => (a === OTHER_KEY ? 1 : b === OTHER_KEY ? -1 : 0));
     else {
@@ -340,7 +361,7 @@ export default function CategoryAnalysisPage() {
     }
     const rows = data.months.flatMap((m) => keys.map((k) => ({ month: monthLabel(m), name: label(k), value: agg.get(`${m}|${k}`) ?? 0 })));
     return { rows, names: keys.map(label), keys };
-  }, [data, catRows]);
+  }, [data, catRows, shortMap]);
 
   const products = useMemo(() => {
     const q = prodQuery.trim().toLowerCase();
@@ -567,12 +588,12 @@ export default function CategoryAnalysisPage() {
               </Section>
               <Section title="Товары: сейчас и год назад" extra={<span className="cat-legend"><i className="cat-legend__cur" />сейчас <i className="cat-legend__prev" />год назад</span>}>
                 <PairBars
-                  rows={data.products.filter((x) => x.rev > 0 || x.revPrev > 0).slice(0, 15).map((x) => ({ key: x.id, name: x.name, cur: x.rev, prev: x.revPrev, change: x.revChange }))}
+                  rows={data.products.filter((x) => x.rev > 0 || x.revPrev > 0).slice(0, 15).map((x) => ({ key: x.id, name: short(x.name), full: x.name, cur: x.rev, prev: x.revPrev, change: x.revChange }))}
                 />
               </Section>
               <Section title="Кто прибавил, кто потерял">
                 <DeltaBars
-                  rows={data.products.map((x) => ({ key: x.id, name: x.name, delta: x.rev - x.revPrev }))
+                  rows={data.products.map((x) => ({ key: x.id, name: short(x.name), full: x.name, delta: x.rev - x.revPrev }))
                     .filter((r) => Math.abs(r.delta) > 0).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 15)
                     .sort((a, b) => b.delta - a.delta)}
                 />
