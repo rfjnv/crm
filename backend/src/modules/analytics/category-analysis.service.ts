@@ -40,6 +40,11 @@ export interface ProductInfo {
 }
 
 export const NO_CATEGORY = 'Без категории';
+/** Товары только для своих компаний (Базис Принт, ППС) — не для продажи; без своих компаний их не видно. */
+export const INTERNAL_CATEGORY = 'Для своих компаний';
+
+/** Чьи покупки: все клиенты, без своих компаний (AFFILIATE) или только свои. */
+export type ClientScope = 'all' | 'ext' | 'own';
 export const OTHER_KEY = '__other__';
 const TOP_MONTHLY_PRODUCTS = 8;
 
@@ -241,7 +246,7 @@ export interface AnalysisInput {
   /** Последняя продажа товара за всё время. */
   lastSale: Map<string, string>;
   category: string | null;
-  excludeOwn: boolean;
+  scope: ClientScope;
 }
 
 function abcClasses(rows: { id: string; rev: number }[]): Map<string, 'A' | 'B' | 'C'> {
@@ -277,13 +282,15 @@ function stockStatusOf(stock: number, avgMonthly: number, soldNow: boolean, sold
 }
 
 export function buildAnalysis(input: AnalysisInput): Analysis {
-  const { periods, products, qty90, lastSale, category, excludeOwn } = input;
+  const { periods, qty90, lastSale, category, scope } = input;
   const months = monthsBetween(periods.prev.from.slice(0, 7) < periods.cur.from.slice(0, 7) ? periods.prev.from : periods.cur.from, periods.cur.to);
   const curMonths = monthsBetween(periods.cur.from, periods.cur.to);
+  // Без своих компаний товаров «для своих» нет вовсе — ни в продажах, ни на складе
+  const products = scope === 'ext' ? input.products.filter((p) => p.category !== INTERNAL_CATEGORY) : input.products;
   const info = new Map(products.map((p) => [p.id, p]));
   const catOf = (pid: string) => info.get(pid)?.category || NO_CATEGORY;
 
-  const lines = excludeOwn ? input.lines.filter((l) => !l.own) : input.lines;
+  const lines = input.lines.filter((l) => (scope === 'ext' ? !l.own && info.has(l.productId) : scope === 'own' ? l.own : true));
   const side = (l: SaleLine): 'cur' | 'prev' | null =>
     l.day >= periods.cur.from && l.day <= periods.cur.to ? 'cur'
       : l.day >= periods.prev.from && l.day <= periods.prev.to ? 'prev' : null;

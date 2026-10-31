@@ -13,7 +13,7 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { responseCache } from '../../lib/responseCache';
 import {
   NO_CATEGORY, addDays, buildAnalysis, resolvePeriods,
-  type PeriodKind, type ProductInfo, type SaleLine,
+  type ClientScope, type PeriodKind, type ProductInfo, type SaleLine,
 } from './category-analysis.service';
 
 const router = Router();
@@ -38,7 +38,8 @@ router.get(
     const from = typeof q.from === 'string' && DAY_RE.test(q.from) ? q.from : undefined;
     const to = typeof q.to === 'string' && DAY_RE.test(q.to) ? q.to : undefined;
     const category = typeof q.category === 'string' && q.category.trim() ? q.category.trim() : null;
-    const excludeOwn = q.excludeOwn !== 'false';
+    // scope: all | ext | own; старый параметр excludeOwn=false — то же, что all
+    const scope: ClientScope = q.scope === 'all' || q.scope === 'own' || q.scope === 'ext' ? q.scope : q.excludeOwn === 'false' ? 'all' : 'ext';
     const today = todayTashkent();
     const periods = resolvePeriods(kind, today, from, to);
     const spanFrom = periods.prev.from < periods.cur.from ? periods.prev.from : periods.cur.from;
@@ -101,7 +102,7 @@ router.get(
       qty90: new Map(recent.map((r) => [r.product_id, Number(r.qty) || 0])),
       lastSale: new Map(last.map((r) => [r.product_id, r.day])),
       category,
-      excludeOwn,
+      scope,
     });
 
     // Имена клиентов и менеджеров — одним запросом на тех, кто попал в ответ
@@ -118,7 +119,7 @@ router.get(
       ...analysis,
       today,
       category,
-      excludeOwn,
+      scope,
       clients: analysis.clients.map((c) => ({ ...c, name: cName.get(c.id) ?? '—', managerName: uName.get(c.managerId) ?? '—' })),
       managers: analysis.managers.map((m) => ({ ...m, name: uName.get(m.id) ?? '—' })),
       // Подписи для помесячного графика внутри категории

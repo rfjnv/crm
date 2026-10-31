@@ -3,6 +3,8 @@ import client from './client';
 /** Анализ категорий: период против того же периода год назад (backend category-analysis.routes). */
 
 export type CategoryPeriod = 'ytd' | 'r12' | 'custom';
+/** Чьи покупки: все, без своих компаний, только свои. */
+export type CategoryScope = 'all' | 'ext' | 'own';
 
 export interface CategoryTotals {
   rev: number; revPrev: number; revChange: number | null;
@@ -73,7 +75,7 @@ export interface CategoryClientProductRow {
 export interface CategoryAnalysisResponse {
   today: string;
   category: string | null;
-  excludeOwn: boolean;
+  scope: CategoryScope;
   periods: { kind: CategoryPeriod; cur: { from: string; to: string }; prev: { from: string; to: string } };
   months: string[];
   curMonths: string[];
@@ -94,7 +96,7 @@ export interface CategoryAnalysisParams {
   from?: string;
   to?: string;
   category?: string | null;
-  excludeOwn: boolean;
+  scope: CategoryScope;
 }
 
 export const categoryAnalysisApi = {
@@ -106,7 +108,7 @@ export const categoryAnalysisApi = {
           from: p.period === 'custom' ? p.from : undefined,
           to: p.period === 'custom' ? p.to : undefined,
           category: p.category || undefined,
-          excludeOwn: String(p.excludeOwn),
+          scope: p.scope,
         },
       })
       .then((r) => r.data),

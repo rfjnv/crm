@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAnalysis, monthsBetween, resolvePeriods, shiftYear, type ProductInfo, type SaleLine } from './category-analysis.service';
+import { INTERNAL_CATEGORY, buildAnalysis, monthsBetween, resolvePeriods, shiftYear, type ClientScope, type ProductInfo, type SaleLine } from './category-analysis.service';
 
 const product = (id: string, category: string, stock = 10): ProductInfo => ({
   id, name: id, sku: id, unit: 'кг', category, stock, minStock: 0, isActive: true,
@@ -45,13 +45,29 @@ describe('buildAnalysis', () => {
     line('2026-03-01', 'film', 'c2', 900, 6),
     line('2026-03-02', 'film', 'own', 5000, 50, true),
   ];
-  const run = (excludeOwn: boolean, category: string | null = null) => buildAnalysis({
-    periods, lines, products, qty90: new Map([['film', 30]]), lastSale: new Map(), category, excludeOwn,
+  const run = (excludeOwn: boolean, category: string | null = null, scope?: ClientScope) => buildAnalysis({
+    periods, lines, products, qty90: new Map([['film', 30]]), lastSale: new Map(), category, scope: scope ?? (excludeOwn ? 'ext' : 'all'),
   });
 
   it('drops own companies when asked', () => {
     expect(run(true).totals).toMatchObject({ rev: 900, revPrev: 1500, clients: 1, clientsPrev: 2, lostClients: 1, revLost: 1000 });
     expect(run(false).totals.rev).toBe(5900);
+  });
+
+  it('shows only own companies when asked', () => {
+    expect(run(false, null, 'own').totals).toMatchObject({ rev: 5000, revPrev: 0, clients: 1 });
+  });
+
+  it('hides the internal category without own companies and keeps it otherwise', () => {
+    const withInternal = (scope: ClientScope) => buildAnalysis({
+      periods,
+      lines: [...lines, line('2026-04-01', 'rubber', 'own', 300, 3, true), line('2026-04-02', 'rubber', 'c2', 50, 1)],
+      products: [...products, product('rubber', INTERNAL_CATEGORY, 5), product('punch', INTERNAL_CATEGORY, 30)],
+      qty90: new Map(), lastSale: new Map(), category: null, scope,
+    });
+    expect(withInternal('ext').categories.map((c) => c.name)).not.toContain(INTERNAL_CATEGORY);
+    expect(withInternal('ext').totals.rev).toBe(900);
+    expect(withInternal('all').categories.find((c) => c.name === INTERNAL_CATEGORY)?.rev).toBe(350);
   });
 
   it('counts revenue lost on out-of-stock products', () => {

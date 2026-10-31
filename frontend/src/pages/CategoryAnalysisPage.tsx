@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, DatePicker, Empty, Input, Segmented, Select, Spin, Switch, Table, Tooltip, Typography } from 'antd';
+import { Alert, DatePicker, Empty, Input, Segmented, Select, Spin, Table, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Column } from '@ant-design/charts';
 import dayjs from 'dayjs';
@@ -18,7 +18,7 @@ import { axisFor, fmtQty, money, useChartLook } from '../components/history/hist
 import {
   categoryAnalysisApi,
   type CategoryAnalysisResponse, type CategoryClientRow, type CategoryClientStatus, type CategoryManagerRow,
-  type CategoryPeriod, type CategoryProductRow, type CategoryRow, type StockStatus,
+  type CategoryPeriod, type CategoryProductRow, type CategoryScope, type CategoryRow, type StockStatus,
 } from '../api/categoryAnalysis.api';
 import './CategoryAnalysisPage.css';
 
@@ -286,7 +286,8 @@ export default function CategoryAnalysisPage() {
   const [sp, setSp] = useSearchParams();
   const period = (['ytd', 'r12', 'custom'].includes(sp.get('period') ?? '') ? sp.get('period') : 'ytd') as CategoryPeriod;
   const category = sp.get('category');
-  const excludeOwn = sp.get('own') !== 'all';
+  const own = sp.get('own');
+  const scope: CategoryScope = own === 'all' ? 'all' : own === 'only' ? 'own' : 'ext';
   const from = sp.get('from') ?? undefined;
   const to = sp.get('to') ?? undefined;
   const [prodFilter, setProdFilter] = useState<'all' | 'down' | 'up' | 'out' | 'low' | 'dead' | 'new'>('all');
@@ -307,8 +308,8 @@ export default function CategoryAnalysisPage() {
   };
 
   const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ['category-analysis', period, from, to, category, excludeOwn],
-    queryFn: () => categoryAnalysisApi.get({ period, from, to, category, excludeOwn }),
+    queryKey: ['category-analysis', period, from, to, category, scope],
+    queryFn: () => categoryAnalysisApi.get({ period, from, to, category, scope }),
     enabled: period !== 'custom' || (!!from && !!to),
     staleTime: 60_000,
     placeholderData: (prev) => prev,
@@ -499,11 +500,16 @@ export default function CategoryAnalysisPage() {
             onChange={(v) => pickCategory(v ?? null)}
             options={catRows.map((c) => ({ value: c.name, label: c.name }))}
           />
-          <Tooltip title="Базис Принт и ППС — свои компании (клиенты с отметкой «аффилированный»). Их закупки не показывают спрос рынка.">
-            <label className="cat-switch">
-              <Switch size="small" checked={excludeOwn} onChange={(v) => set({ own: v ? null : 'all' })} />
-              <span>Без своих компаний</span>
-            </label>
+          <Tooltip title="Свои компании — Базис Принт и ППС (клиенты с отметкой «аффилированный»). Без них — спрос рынка; категория «Для своих компаний» тогда скрыта.">
+            <Segmented
+              value={scope}
+              onChange={(v) => set({ own: v === 'ext' ? null : v === 'own' ? 'only' : 'all' })}
+              options={[
+                { label: 'Без своих компаний', value: 'ext' },
+                { label: 'Только свои', value: 'own' },
+                { label: 'Все клиенты', value: 'all' },
+              ]}
+            />
           </Tooltip>
         </div>
       </div>
