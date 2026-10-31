@@ -51,6 +51,49 @@ export function shortenNames(names: string[], minCommonWords = 2): Map<string, s
   return out;
 }
 
+/** Слово для сравнения начал: без регистра, «ё», знаков и окончания — «Самоклеющаяся» = «Самоклеящаяся». */
+const stemWord = (w: string) => w.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]/gu, '').slice(0, 5);
+const PREPOSITIONS = new Set(['в', 'во', 'на', 'для', 'с', 'со', 'из', 'по', 'под', 'и']);
+
+/**
+ * Как {@link shortenNames}, но общее начало ищется по большинству названий (≥ 60 %) и слова
+ * сравниваются по первым буквам: опечатка или один товар с другим продолжением не отключают
+ * сокращение для всей категории. Убираем не меньше двух слов и только если после них что-то остаётся.
+ */
+export function stripSharedStart(names: string[]): Map<string, string> {
+  const out = new Map(names.map((n) => [n, n.trim()]));
+  const unique = [...new Set(names)];
+  if (unique.length < 2) return out;
+  const words = unique.map((n) => n.trim().split(/\s+/));
+  const need = Math.max(2, Math.ceil(unique.length * 0.8));
+  const prefix: string[] = [];
+  let pool = words.map((_, i) => i);
+  for (;;) {
+    const i = prefix.length;
+    const counts = new Map<string, number>();
+    // Название, которое кончается на этом слове, тоже «согласно» с началом — его просто не сократим
+    for (const k of pool) {
+      if (words[k].length <= i) continue;
+      if (/\d/.test(words[k][i])) continue; // размеры и марки и есть отличие — их не убираем
+      const s = stemWord(words[k][i]);
+      counts.set(s, (counts.get(s) ?? 0) + 1);
+    }
+    const best = [...counts].sort((a, b) => b[1] - a[1])[0];
+    if (!best || best[1] < need) break;
+    prefix.push(best[0]);
+    pool = pool.filter((k) => words[k].length > i && stemWord(words[k][i]) === best[0]);
+  }
+  // «в листах 300гр» читается, «листах 300гр» — нет: предлог оставляем с продолжением
+  while (prefix.length && PREPOSITIONS.has(prefix[prefix.length - 1])) prefix.pop();
+  if (prefix.length < 2) return out;
+  unique.forEach((name, k) => {
+    let n = 0;
+    while (n < prefix.length && n < words[k].length && stemWord(words[k][n]) === prefix[n]) n += 1;
+    if (n >= 2 && n < words[k].length) out.set(name, words[k].slice(n).join(' '));
+  });
+  return out;
+}
+
 /** Обрезает подпись до `max` символов с многоточием. */
 export function truncateLabel(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;

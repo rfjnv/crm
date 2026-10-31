@@ -13,6 +13,7 @@ import StatusPill, { type StatusTone } from '../components/ui/StatusPill';
 import CategoryClientProducts from '../components/CategoryClientProducts';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatPercent } from '../utils/currency';
+import { stripSharedStart } from '../utils/chartShaping';
 import { axisFor, fmtQty, money, useChartLook } from '../components/history/historyChartUtils';
 import {
   categoryAnalysisApi,
@@ -48,25 +49,6 @@ const shiftMonth = (m: string, k: number) => {
 const delta = (v: number | null, digits: 0 | 1 = 0) => formatPercent(v, digits, { signed: true });
 const tone = (v: number | null): StatusTone => (v == null ? 'neutral' : v > 2 ? 'positive' : v < -2 ? 'negative' : 'neutral');
 const signedMoney = (v: number) => (v > 0 ? `+${money(v)}` : money(v));
-
-/**
- * Внутри категории названия часто начинаются одинаково («Термоклей в гранулах Q2000»):
- * на графиках оставляем отличающуюся часть. Название, которое целиком равно общему началу,
- * остаётся как есть. Полное — в подсказке.
- */
-function shortNames(names: string[]): Map<string, string> {
-  const out = new Map(names.map((n) => [n, n]));
-  const words = [...new Set(names)].map((n) => n.trim().split(/\s+/));
-  if (words.length < 2) return out;
-  let common = 0;
-  while (words.every((w) => w[common] != null && w[common] === words[0][common])) common += 1;
-  if (common < 2) return out;
-  for (const n of names) {
-    const rest = n.trim().split(/\s+/).slice(common).join(' ');
-    out.set(n, rest || n);
-  }
-  return out;
-}
 
 function Change({ value, digits = 0 }: { value: number | null; digits?: 0 | 1 }) {
   if (value == null) return <span className="cat-new">новое</span>;
@@ -333,7 +315,7 @@ export default function CategoryAnalysisPage() {
   });
 
   const catRows = useMemo(() => (data?.categories ?? []).filter((c) => c.rev > 0 || c.revPrev > 0), [data]);
-  const shortMap = useMemo(() => shortNames(data?.category ? data.products.map((x) => x.name) : []), [data]);
+  const shortMap = useMemo(() => stripSharedStart(data?.category ? data.products.map((x) => x.name) : []), [data]);
   const short = (name: string) => shortMap.get(name) ?? name;
 
   const monthCompare = useMemo(() => {

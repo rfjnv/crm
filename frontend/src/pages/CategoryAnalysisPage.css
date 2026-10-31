@@ -91,7 +91,8 @@
 .cat-pairs__row--link { cursor: pointer; }
 .cat-pairs__row--link:hover { background: var(--cat-track); }
 .cat-pairs__row--dim { opacity: 0.4; }
-.cat-pairs__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+/* Длинное название — в две строки, а не многоточием на первом слове */
+.cat-pairs__name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; line-height: 1.3; font-size: 13px; }
 .cat-pairs__bars { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .cat-pairs__cur { height: 12px; border-radius: 3px; background: var(--cat-accent); min-width: 1px; }
 .cat-pairs__prev { height: 4px; border-radius: 2px; background: var(--cat-prev); min-width: 1px; }
@@ -115,7 +116,7 @@
 }
 .cat-delta__row--link { cursor: pointer; }
 .cat-delta__row--link:hover { background: var(--cat-track); }
-.cat-delta__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.cat-delta__name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; line-height: 1.3; font-size: 13px; }
 .cat-delta__track { position: relative; height: 14px; }
 .cat-delta__axis { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--cat-prev); }
 .cat-delta__bar { position: absolute; top: 1px; height: 12px; border-radius: 3px; min-width: 1px; }

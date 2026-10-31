@@ -1,5 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { findOutlierCap, shortenNames, truncateLabel } from './chartShaping';
+import { findOutlierCap, shortenNames, stripSharedStart, truncateLabel } from './chartShaping';
+
+describe('stripSharedStart', () => {
+  it('убирает начало, даже если у части товаров другое написание и продолжение', () => {
+    const m = stripSharedStart([
+      'Самоклеющаяся бумага ф: 50*70 ок',
+      ' Самоклеющаяся бумага ф: 50*35 ок б/н',
+      'Самоклеящаяся бумага ф: 70*100 кизил',
+      'Самоклеющаяся бумага в рулонах 1м*2000м',
+      'Самоклеющаяся бумага ф: 70*100 турк',
+    ]);
+    expect(m.get('Самоклеющаяся бумага ф: 50*70 ок')).toBe('50*70 ок');
+    expect(m.get(' Самоклеющаяся бумага ф: 50*35 ок б/н')).toBe('50*35 ок б/н');
+    expect(m.get('Самоклеящаяся бумага ф: 70*100 кизил')).toBe('70*100 кизил');
+    expect(m.get('Самоклеющаяся бумага в рулонах 1м*2000м')).toBe('в рулонах 1м*2000м');
+  });
+
+  it('оставляет название, которое целиком равно общему началу', () => {
+    const m = stripSharedStart(['Термоклей в гранулах', 'Термоклей в гранулах Q2000', 'Термоклей в гранулах ок G880', 'Термоклей в гранулах (бакавой) х3000']);
+    expect([...m.values()]).toEqual(['Термоклей в гранулах', 'Q2000', 'ок G880', '(бакавой) х3000']);
+  });
+
+  it('не трогает разнородные названия и общее начало из одного слова', () => {
+    const names = ['очиститель для пластин NOVAFIX', 'Добавка NOVA PLUS', 'проявитель Нова 1+9 UV'];
+    expect([...stripSharedStart(names).values()]).toEqual(names);
+    expect([...stripSharedStart(['Лак матт', 'Лак глянц']).values()]).toEqual(['Лак матт', 'Лак глянц']);
+  });
+});
 
 describe('findOutlierCap', () => {
   it('находит один огромный месяц', () => {
