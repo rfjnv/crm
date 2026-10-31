@@ -251,6 +251,7 @@ function tree(a: MenuAccess): { key: string; title?: string; items: DraftNode[] 
           children: [
             { key: '/analytics', to: '/analytics', text: 'Общая', soloText: 'Аналитика', show: managerAnalytics && hasRole('SUPER_ADMIN', 'ADMIN') },
             { key: '/history-analytics', to: '/history-analytics', text: 'История', soloText: 'Аналитика (история)', show: managerAnalytics && hasRole('SUPER_ADMIN', 'ADMIN') },
+            { key: '/analytics/categories', to: '/analytics/categories', text: 'Категории', show: managerAnalytics && hasRole('SUPER_ADMIN', 'ADMIN') },
             { key: '/analytics/market', to: '/analytics/market', text: 'Анализ рынка', show: managerAnalytics && hasRole('SUPER_ADMIN', 'ADMIN') },
             { key: '/analytics/department-report', to: '/analytics/department-report', text: 'Отчёт отдела', show: managerAnalytics && hasRole('SUPER_ADMIN', 'ADMIN') },
           ],

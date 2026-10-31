@@ -774,6 +774,11 @@ export default function Layout() {
               label: <Link to="/history-analytics">Аналитика (история)</Link>,
             },
             {
+              key: '/analytics/categories',
+              icon: <AppstoreOutlined />,
+              label: <Link to="/analytics/categories">Анализ категорий</Link>,
+            },
+            {
               key: '/analytics/market',
               icon: <GlobalOutlined />,
               label: <Link to="/analytics/market">Анализ рынка</Link>,

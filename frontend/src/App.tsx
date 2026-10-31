@@ -82,6 +82,7 @@ const DeadProductsPage = lazy(() => import('./pages/DeadProductsPage'));
 const LaminationKgUsagePage = lazy(() => import('./pages/LaminationKgUsagePage'));
 const PaymentOverduePage = lazy(() => import('./pages/PaymentOverduePage'));
 const MarketAnalysisPage = lazy(() => import('./pages/MarketAnalysisPage'));
+const CategoryAnalysisPage = lazy(() => import('./pages/CategoryAnalysisPage'));
 const ReviewsPage = lazy(() => import('./pages/ReviewsPage'));
 const ProductFeedbackPage = lazy(() => import('./pages/ProductFeedbackPage'));
 const WarehouseManagerPage = lazy(() => import('./pages/WarehouseManagerPage'));
@@ -285,6 +286,7 @@ export default function App() {
                   <Route path="/analytics" element={<MoneyAccessGuard><AnalyticsPage /></MoneyAccessGuard>} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
                   <Route path="/analytics/market" element={<MarketAnalysisPage />} />
+                  <Route path="/analytics/categories" element={<MoneyAccessGuard><CategoryAnalysisPage /></MoneyAccessGuard>} />
                   <Route path="/analytics/department-report" element={<MoneyAccessGuard><DepartmentReportPage /></MoneyAccessGuard>} />
                   <Route path="/analytics/price-comparison" element={<Navigate to="/analytics/market" replace />} />
                   <Route path="/analytics/unique-products" element={<Navigate to="/analytics/market" replace />} />

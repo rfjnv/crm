@@ -1,0 +1,174 @@
+/* Анализ категорий: шапка, полосы «сейчас / год назад», мост изменения, ABC×XYZ */
+
+.cat-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-variant-numeric: tabular-nums;
+  --cat-pos: var(--c-pos-fg, var(--ant-color-success, #16a34a));
+  --cat-neg: var(--c-neg-fg, var(--ant-color-error, #dc2626));
+  --cat-warn: var(--c-warn-fg, var(--ant-color-warning, #d97706));
+  --cat-accent: var(--c-accent-fill, var(--ant-color-primary, #2563eb));
+  --cat-track: var(--fill-2, var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.06)));
+  --cat-prev: var(--c-text-3, var(--ant-color-text-quaternary, rgba(0, 0, 0, 0.25)));
+  --cat-muted: var(--c-text-3, var(--ant-color-text-tertiary, rgba(0, 0, 0, 0.45)));
+}
+
+.cat-body { display: flex; flex-direction: column; gap: 16px; transition: opacity 0.2s ease; }
+.cat-body--fetching { opacity: 0.6; }
+.cat-loading { display: flex; justify-content: center; padding: 80px 0; }
+
+.cat-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 20px;
+}
+.cat-title { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.cat-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.cat-select { min-width: 220px; }
+.cat-switch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+.cat-crumb {
+  padding: 0; border: 0; background: none; font: inherit; cursor: pointer;
+  color: var(--cat-muted);
+}
+.cat-crumb:hover { color: var(--ant-color-text, inherit); }
+
+.cat-muted { color: var(--cat-muted); }
+.cat-note { display: block; font-size: 12px; }
+.cat-dotted { border-bottom: 1px dotted currentColor; cursor: help; }
+.cat-new { color: var(--cat-accent); font-size: 12px; }
+.cat-chg { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.cat-chg--positive { color: var(--cat-pos); }
+.cat-chg--negative { color: var(--cat-neg); }
+.cat-chg--neutral { color: var(--cat-muted); }
+
+.cat-link {
+  padding: 0; border: 0; background: none; font: inherit; cursor: pointer; text-align: left;
+  color: var(--ant-color-link, var(--cat-accent));
+}
+.cat-link:hover { text-decoration: underline; }
+.cat-link:focus-visible, .cat-pairs__row--link:focus-visible, .cat-delta__row--link:focus-visible {
+  outline: 2px solid var(--cat-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.cat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  gap: 16px;
+}
+.cat-grid > * { min-width: 0; }
+.cat-grid--wide-left { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+@media (max-width: 1100px) { .cat-grid--wide-left { grid-template-columns: minmax(0, 1fr); } }
+
+.cat-insights { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; line-height: 1.55; max-width: 110ch; }
+.cat-insights b { font-weight: 600; }
+
+.cat-legend { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--cat-muted); }
+.cat-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-left: 6px; }
+.cat-legend__cur { background: var(--cat-accent); }
+.cat-legend__prev { background: var(--cat-prev); }
+
+/* Полосы «сейчас / год назад» */
+.cat-pairs { display: flex; flex-direction: column; gap: 2px; }
+.cat-pairs__row {
+  display: grid;
+  grid-template-columns: minmax(90px, 34%) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+}
+.cat-pairs__row--link { cursor: pointer; }
+.cat-pairs__row--link:hover { background: var(--cat-track); }
+.cat-pairs__row--dim { opacity: 0.4; }
+.cat-pairs__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.cat-pairs__bars { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cat-pairs__cur { height: 12px; border-radius: 3px; background: var(--cat-accent); min-width: 1px; }
+.cat-pairs__prev { height: 4px; border-radius: 2px; background: var(--cat-prev); min-width: 1px; }
+.cat-pairs__val { font-size: 13px; white-space: nowrap; text-align: right; min-width: 104px; }
+
+/* Разница с прошлым годом */
+.cat-delta { display: flex; flex-direction: column; gap: 2px; }
+.cat-delta__row {
+  display: grid;
+  grid-template-columns: minmax(90px, 30%) minmax(0, 1fr) 88px;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+}
+.cat-delta__row--link { cursor: pointer; }
+.cat-delta__row--link:hover { background: var(--cat-track); }
+.cat-delta__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.cat-delta__track { position: relative; height: 14px; }
+.cat-delta__axis { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--cat-prev); }
+.cat-delta__bar { position: absolute; top: 1px; height: 12px; border-radius: 3px; min-width: 1px; }
+.cat-delta__bar--up { background: var(--cat-pos); }
+.cat-delta__bar--down { background: var(--cat-neg); }
+.cat-delta__val { font-size: 12px; font-weight: 600; text-align: right; white-space: nowrap; }
+
+/* Мост изменения выручки */
+.cat-bridge { display: flex; flex-direction: column; gap: 6px; }
+.cat-bridge__row { display: grid; grid-template-columns: 130px minmax(0, 1fr) 92px; align-items: center; gap: 10px; font-size: 13px; }
+.cat-bridge__track { position: relative; height: 20px; background: var(--cat-track); border-radius: 4px; }
+.cat-bridge__bar { position: absolute; top: 2px; bottom: 2px; border-radius: 3px; }
+.cat-bridge__bar--total { background: var(--cat-accent); }
+.cat-bridge__bar--up { background: var(--cat-pos); }
+.cat-bridge__bar--down { background: var(--cat-neg); }
+.cat-bridge__val { text-align: right; font-weight: 600; white-space: nowrap; }
+
+/* ABC × XYZ */
+.cat-abc { display: grid; grid-template-columns: 56px repeat(4, minmax(0, 1fr)); gap: 4px; margin-bottom: 8px; }
+.cat-abc__line { display: contents; }
+.cat-abc__head { font-size: 12px; font-weight: 600; color: var(--cat-muted); align-self: center; justify-self: center; }
+.cat-abc__cell {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 52px; border-radius: 8px; cursor: default;
+}
+.cat-abc__cell b { font-size: 18px; font-weight: 600; }
+.cat-abc__cell small { font-size: 11px; color: var(--cat-muted); }
+.cat-abc__cell--A { background: color-mix(in srgb, var(--cat-pos) 26%, transparent); }
+.cat-abc__cell--A-weak { background: color-mix(in srgb, var(--cat-pos) 14%, transparent); }
+.cat-abc__cell--B, .cat-abc__cell--B-weak { background: color-mix(in srgb, var(--cat-warn) 16%, transparent); }
+.cat-abc__cell--C { background: color-mix(in srgb, var(--cat-neg) 12%, transparent); }
+.cat-abc__cell--C-weak { background: color-mix(in srgb, var(--cat-neg) 20%, transparent); }
+.cat-abc__cell--empty { background: var(--cat-track); color: var(--cat-muted); }
+
+/* Таблицы */
+.cat-tools { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 10px; }
+.cat-tools .ant-segmented { max-width: 100%; overflow-x: auto; }
+.cat-search { width: 240px; max-width: 100%; }
+.cat-prod { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cat-prod .cat-muted { font-size: 12px; }
+.cat-stock { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
+.cat-spark polyline { stroke: var(--cat-accent); }
+.cat-tag {
+  display: inline-block; padding: 0 5px; border-radius: 4px; font-size: 11px; font-weight: 600; line-height: 16px;
+  background: var(--cat-track); color: var(--ant-color-text, inherit);
+}
+.cat-tag--A { background: color-mix(in srgb, var(--cat-pos) 22%, transparent); }
+.cat-tag--B { background: color-mix(in srgb, var(--cat-warn) 22%, transparent); }
+.cat-tag--C { background: color-mix(in srgb, var(--cat-neg) 16%, transparent); }
+
+@media (max-width: 640px) {
+  .cat-select { min-width: 0; flex: 1 1 100%; }
+  .cat-pairs__row { grid-template-columns: minmax(80px, 38%) minmax(0, 1fr) auto; }
+  .cat-pairs__val { min-width: 0; }
+  .cat-bridge__row { grid-template-columns: 96px minmax(0, 1fr) 80px; }
+}
