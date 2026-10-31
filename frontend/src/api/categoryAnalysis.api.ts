@@ -61,6 +61,15 @@ export interface CategoryManagerRow {
   orders: number;
 }
 
+export interface CategoryClientProductRow {
+  clientId: string;
+  productId: string;
+  qty: number; qtyPrev: number;
+  rev: number; revPrev: number;
+  orders: number;
+  lastBuy: string | null;
+}
+
 export interface CategoryAnalysisResponse {
   today: string;
   category: string | null;
@@ -74,6 +83,8 @@ export interface CategoryAnalysisResponse {
   products: CategoryProductRow[];
   clients: CategoryClientRow[];
   managers: CategoryManagerRow[];
+  /** Кто что купил — только внутри категории. */
+  clientProducts: CategoryClientProductRow[];
   priceVolume: { volume: number; price: number; added: number; dropped: number };
   productNames?: Record<string, string>;
 }

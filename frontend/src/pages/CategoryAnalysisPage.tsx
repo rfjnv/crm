@@ -10,6 +10,7 @@ import Section from '../components/ui/Section';
 import StatTile, { StatGrid } from '../components/ui/StatTile';
 import Money from '../components/ui/Money';
 import StatusPill, { type StatusTone } from '../components/ui/StatusPill';
+import CategoryClientProducts from '../components/CategoryClientProducts';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatPercent } from '../utils/currency';
 import { axisFor, fmtQty, money, useChartLook } from '../components/history/historyChartUtils';
@@ -677,6 +678,8 @@ export default function CategoryAnalysisPage() {
               locale={{ emptyText: <Empty description="Нет товаров" /> }}
             />
           </Section>
+
+          {category && <CategoryClientProducts data={data} short={short} />}
 
           <div className="cat-grid cat-grid--wide-left">
             <Section title={category ? 'Клиенты категории' : 'Клиенты'} count={clients.length}>

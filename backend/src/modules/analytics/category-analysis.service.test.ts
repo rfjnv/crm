@@ -73,6 +73,13 @@ describe('buildAnalysis', () => {
     expect(a.categories).toHaveLength(2);
   });
 
+  it('lists what each client bought inside the category', () => {
+    expect(run(true, 'Плёнка').clientProducts).toEqual([
+      { clientId: 'c2', productId: 'film', qty: 6, qtyPrev: 5, rev: 900, revPrev: 500, orders: 1, lastBuy: '2026-03-01' },
+    ]);
+    expect(run(true).clientProducts).toEqual([]);
+  });
+
   it('marks a product sold only last year and now at zero stock as out of stock', () => {
     expect(run(true, 'Бумага').products[0]).toMatchObject({ id: 'paper', stockStatus: 'out', rev: 0, revPrev: 1000 });
   });

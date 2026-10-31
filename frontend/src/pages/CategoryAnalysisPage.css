@@ -172,3 +172,13 @@
   .cat-pairs__val { min-width: 0; }
   .cat-bridge__row { grid-template-columns: 96px minmax(0, 1fr) 80px; }
 }
+
+/* Кто что купил */
+.cat-cell2 { display: flex; flex-direction: column; align-items: flex-end; white-space: nowrap; line-height: 1.3; }
+.cat-cell2 .cat-muted { font-size: 12px; }
+.cat-items { display: flex; flex-wrap: wrap; gap: 4px; }
+.cat-item {
+  padding: 1px 8px; border-radius: 10px; font-size: 12px; line-height: 18px;
+  background: var(--cat-track);
+}
+.cat-item b { font-weight: 600; }

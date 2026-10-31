@@ -195,6 +195,16 @@ export interface ManagerRow {
   orders: number;
 }
 
+/** Клиент × товар внутри категории: кто что и сколько купил. */
+export interface ClientProductRow {
+  clientId: string;
+  productId: string;
+  qty: number; qtyPrev: number;
+  rev: number; revPrev: number;
+  orders: number;
+  lastBuy: string | null;
+}
+
 export interface PriceVolume {
   /** Больше или меньше штук/кг у товаров, что продавались в обоих периодах. */
   volume: number;
@@ -217,6 +227,8 @@ export interface Analysis {
   products: ProductRow[];
   clients: ClientRow[];
   managers: ManagerRow[];
+  /** Только внутри категории. */
+  clientProducts: ClientProductRow[];
   priceVolume: PriceVolume;
 }
 
@@ -294,6 +306,7 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
   const cli = new Map<string, { cur: Acc; prev: Acc; products: Set<string>; lastManager: string; lastDay: string; own: boolean }>();
   const man = new Map<string, { cur: Acc; prev: Acc }>();
   const monthly = new Map<string, number>();
+  const cp = new Map<string, { qty: number; qtyPrev: number; rev: number; revPrev: number; deals: Set<string>; lastDay: string }>();
 
   for (const l of scoped) {
     const s = side(l);
@@ -322,6 +335,16 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
     let m = man.get(l.managerId);
     if (!m) { m = { cur: acc(), prev: acc() }; man.set(l.managerId, m); }
     add(m[s], l);
+
+    if (category) {
+      const k = `${l.clientId}|${l.productId}`;
+      let x = cp.get(k);
+      if (!x) { x = { qty: 0, qtyPrev: 0, rev: 0, revPrev: 0, deals: new Set(), lastDay: '' }; cp.set(k, x); }
+      if (s === 'cur') {
+        x.qty += l.qty; x.rev += l.rev; x.deals.add(l.dealId);
+        if (l.day > x.lastDay) x.lastDay = l.day;
+      } else { x.qtyPrev += l.qty; x.revPrev += l.rev; }
+    }
   }
 
   // Товары: все, что продавались в одном из периодов, плюс лежащие на складе без продаж (в категории)
@@ -443,6 +466,14 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
     products: productRows,
     clients: clientRows,
     managers: managerRows,
+    clientProducts: [...cp].map(([k, x]) => {
+      const [clientId, productId] = k.split('|');
+      return {
+        clientId, productId,
+        qty: round3(x.qty), qtyPrev: round3(x.qtyPrev), rev: round(x.rev), revPrev: round(x.revPrev),
+        orders: x.deals.size, lastBuy: x.lastDay || null,
+      };
+    }).sort((a, b) => b.rev - a.rev || b.revPrev - a.revPrev),
     priceVolume: { volume: round(pv.volume), price: round(pv.price), added: round(pv.added), dropped: round(pv.dropped) },
   };
 }
