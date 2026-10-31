@@ -27,6 +27,17 @@ const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'и�
 const OTHER_KEY = '__other__';
 const TOP_STACK = 7;
 
+/**
+ * Свои цвета товаров на графике состава — как цвет их пачек, чтобы узнавались с первого взгляда.
+ * Пара — светлая и тёмная тема; синий, зелёный и серый совпадают с палитрой графиков.
+ */
+const PRODUCT_COLOR: Record<string, [string, string]> = {
+  'c21d2ddd-93ca-4022-a871-4fab5a39564b': ['#64748b', '#94a3b8'], // Термоклей в гранулах (фил) — серый
+  'f24aabd1-e8d3-49d6-b5ff-399fdf6b51e0': ['#eab308', '#fbbf24'], // Термоклей в гранулах Q2000 — жёлтый
+  'e4a5e061-1519-4bea-81d5-04e345b25c77': ['#2563eb', '#60a5fa'], // Термоклей в гранулах ок G880 — синий
+  'b739ddfe-bd27-4ad0-843a-54edaa98c7cf': ['#059669', '#34d399'], // Термоклей в гранулах (бакавой) х3000 — зелёный
+};
+
 const monthLabel = (m: string) => `${MONTHS[+m.slice(5, 7) - 1]} ${m.slice(2, 4)}`;
 const day = (d: string | null) => (d ? d.split('-').reverse().join('.') : '—');
 const shiftMonth = (m: string, k: number) => {
@@ -313,7 +324,7 @@ export default function CategoryAnalysisPage() {
   }, [data]);
 
   const stack = useMemo(() => {
-    if (!data) return { rows: [] as { month: string; name: string; value: number }[], names: [] as string[] };
+    if (!data) return { rows: [] as { month: string; name: string; value: number }[], names: [] as string[], keys: [] as string[] };
     const label = (k: string) => (k === OTHER_KEY ? 'Остальные' : data.category ? (data.productNames?.[k] ?? k) : k);
     let keys: string[];
     if (data.category) keys = [...new Set(data.monthly.map((r) => r.key))].sort((a, b) => (a === OTHER_KEY ? 1 : b === OTHER_KEY ? -1 : 0));
@@ -328,7 +339,7 @@ export default function CategoryAnalysisPage() {
       agg.set(`${r.month}|${k}`, (agg.get(`${r.month}|${k}`) ?? 0) + r.rev);
     }
     const rows = data.months.flatMap((m) => keys.map((k) => ({ month: monthLabel(m), name: label(k), value: agg.get(`${m}|${k}`) ?? 0 })));
-    return { rows, names: keys.map(label) };
+    return { rows, names: keys.map(label), keys };
   }, [data, catRows]);
 
   const products = useMemo(() => {
@@ -436,7 +447,13 @@ export default function CategoryAnalysisPage() {
       ? data.products.filter((x) => x.stockStatus === 'out' && x.revPrev > 0).reduce((s, x) => s + Math.max(0, x.revPrev - x.rev), 0)
       : data.categories.reduce((s, c) => s + c.lostToStockout, 0))
     : 0;
-  const chartColors = [...look.series.slice(0, stack.names.length - 1), look.years(1)];
+  // «Остальные» — серым; товары со своим цветом — своим; прочие берут свободные цвета палитры по порядку
+  const dark = look.theme === 'classicDark';
+  const fixed = (k: string) => PRODUCT_COLOR[k]?.[dark ? 1 : 0];
+  const taken = new Set(stack.keys.map(fixed).filter(Boolean));
+  const free = look.series.filter((c) => !taken.has(c));
+  let nextFree = 0;
+  const chartColors = stack.keys.map((k) => (k === OTHER_KEY ? look.years(1) : fixed(k) ?? free[nextFree++ % free.length]));
 
   return (
     <div className="cat-page" style={{ padding: isMobile ? 12 : 24 }}>
@@ -565,8 +582,7 @@ export default function CategoryAnalysisPage() {
 
           <div className="cat-grid">
             <Section title={`По месяцам: ${category ?? 'все категории'}`}>
-              <Column
-                data={monthCompare}
+              <Column                key={look.theme}                data={monthCompare}
                 xField="month"
                 yField="value"
                 colorField="series"
@@ -581,8 +597,7 @@ export default function CategoryAnalysisPage() {
               />
             </Section>
             <Section title={category ? 'Состав по товарам' : 'Состав по категориям'}>
-              <Column
-                data={stack.rows}
+              <Column                key={look.theme}                data={stack.rows}
                 xField="month"
                 yField="value"
                 colorField="name"
