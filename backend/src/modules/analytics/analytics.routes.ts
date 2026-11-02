@@ -938,15 +938,16 @@ router.get(
         // Списания со склада за ВЫБРАННЫЙ период (бизнес-дата движения, как у «мёртвого
         // остатка»). Раньше фильтра по периоду не было вовсе: переключатель периода на
         // странице этот блок не двигал, и он спорил с «Топ 5 товаров» на вкладке «Продажи».
-        Prisma.sql`SELECT p.id as product_id, p.name, COALESCE(p.unit, 'шт.') as unit, SUM(m.quantity)::text as total_sold
+        Prisma.sql`SELECT p.id as product_id, p.name, COALESCE(p.unit, 'шт.') as unit, SUM(CASE WHEN m.type = 'IN' THEN -m.quantity ELSE m.quantity END)::text as total_sold
          FROM inventory_movements m
          JOIN products p ON p.id = m.product_id
          LEFT JOIN deals d ON d.id = m.deal_id
-         WHERE ${sqlMovementIsSale('m')}
+         WHERE (${sqlMovementIsSale('m')} OR (m.type = 'IN' AND m.deal_id IS NOT NULL))
            AND ${sqlInventoryMovementBusinessDate('m', 'd')} >= ${start}
            AND ${sqlInventoryMovementBusinessDate('m', 'd')} < ${end}
          GROUP BY p.id, p.name, p.unit
-         ORDER BY SUM(m.quantity) DESC
+         HAVING SUM(CASE WHEN m.type = 'IN' THEN -m.quantity ELSE m.quantity END) > 0
+         ORDER BY SUM(CASE WHEN m.type = 'IN' THEN -m.quantity ELSE m.quantity END) DESC
          LIMIT 10`
       ),
       // Prisma.sql, а не tagged-template: иначе фрагмент подставился бы как параметр.

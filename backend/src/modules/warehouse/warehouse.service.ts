@@ -781,12 +781,15 @@ export class WarehouseService {
     const { granularity, allowed } = resolveProductChartGranularity(period, granularityParam);
     const bucketExpr = sqlInventoryMovementBucket(granularity);
 
+    // Возврат на склад при правке или переоткрытии сделки — это IN с deal_id. Он уменьшает
+    // отгрузку по этой сделке, а не считается поступлением: иначе после обмена товара в сделке
+    // «Отгрузка» больше «Продано», а «Поступило» завышено на возвращённое.
     const [totalsRow, seriesRows, correctionsOutsideRow, salesRows, topClientsRaw] = await Promise.all([
       prisma.$queryRaw<{ total_in: string; total_sale: string }[]>(
         Prisma.sql`
         SELECT
-          COALESCE(SUM(CASE WHEN m.type = 'IN' THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_in,
-          COALESCE(SUM(CASE WHEN m.type = 'OUT' THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_sale
+          COALESCE(SUM(CASE WHEN m.type = 'IN' AND m.deal_id IS NULL THEN m.quantity::numeric ELSE 0 END), 0)::text AS total_in,
+          COALESCE(SUM(CASE WHEN m.type = 'OUT' THEN m.quantity::numeric WHEN m.type = 'IN' THEN -m.quantity::numeric ELSE 0 END), 0)::text AS total_sale
         FROM inventory_movements m
         LEFT JOIN deals d ON d.id = m.deal_id
         WHERE m.product_id = ${productId}
@@ -797,8 +800,8 @@ export class WarehouseService {
         Prisma.sql`
         SELECT
           ${bucketExpr} AS bucket,
-          COALESCE(SUM(CASE WHEN m.type = 'IN' THEN m.quantity::numeric ELSE 0 END), 0)::text AS in_qty,
-          COALESCE(SUM(CASE WHEN m.type = 'OUT' THEN m.quantity::numeric ELSE 0 END), 0)::text AS sale_qty
+          COALESCE(SUM(CASE WHEN m.type = 'IN' AND m.deal_id IS NULL THEN m.quantity::numeric ELSE 0 END), 0)::text AS in_qty,
+          COALESCE(SUM(CASE WHEN m.type = 'OUT' THEN m.quantity::numeric WHEN m.type = 'IN' THEN -m.quantity::numeric ELSE 0 END), 0)::text AS sale_qty
         FROM inventory_movements m
         LEFT JOIN deals d ON d.id = m.deal_id
         WHERE m.product_id = ${productId}
