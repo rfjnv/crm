@@ -14,6 +14,13 @@ import { inventoryApi } from '../api/warehouse.api';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { formatUZS, moneyFormatter } from '../utils/currency';
+
+/** Количество: суммы дробных кг дают 540.0999999999999 — до трёх знаков, с пробелами между разрядами */
+const formatQty = (v: number | string) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toLocaleString('ru-RU', { maximumFractionDigits: 3 }) : String(v);
+};
+const roundQty = (n: number) => Math.round(n * 1000) / 1000;
 import { useIsMobile } from '../hooks/useIsMobile';
 import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
@@ -146,8 +153,8 @@ export default function ProductDetailPage() {
 
   const chartData = (data.movements.movementsByDay || []).flatMap(
     (d: { day: string; inQty: number; outQty: number }) => [
-      { period: d.day, type: MOVEMENT_CHART_IN, qty: d.inQty },
-      { period: d.day, type: MOVEMENT_CHART_OUT, qty: d.outQty },
+      { period: d.day, type: MOVEMENT_CHART_IN, qty: roundQty(d.inQty) },
+      { period: d.day, type: MOVEMENT_CHART_OUT, qty: roundQty(d.outQty) },
     ],
   );
 
@@ -220,7 +227,7 @@ export default function ProductDetailPage() {
           </Col>
           <Col xs={12} sm={6}>
             <Card size="small">
-              <Statistic title="Продано" value={sales.totalQuantitySold} suffix={p.unit} />
+              <Statistic title="Продано" value={sales.totalQuantitySold} formatter={(v) => formatQty(v as number)} suffix={p.unit} />
             </Card>
           </Col>
           <Col xs={12} sm={6}>
@@ -313,6 +320,7 @@ export default function ProductDetailPage() {
                 <Statistic
                   title="Поступило за период"
                   value={data.movements.totalIn}
+                  formatter={(v) => formatQty(v as number)}
                   suffix={p.unit}
                   prefix={<ArrowUpOutlined />}
                   valueStyle={{ color: tk.colorSuccess }}
@@ -322,6 +330,7 @@ export default function ProductDetailPage() {
                 <Statistic
                   title="Отгрузка по сделкам"
                   value={data.movements.totalOut}
+                  formatter={(v) => formatQty(v as number)}
                   suffix={p.unit}
                   prefix={<ArrowDownOutlined />}
                   valueStyle={{ color: tk.colorError }}
@@ -407,6 +416,7 @@ export default function ProductDetailPage() {
                 dataIndex: 'quantity',
                 width: 100,
                 align: 'right' as const,
+                render: (v: number | string) => formatQty(v),
               },
               {
                 title: 'Рулоны',
