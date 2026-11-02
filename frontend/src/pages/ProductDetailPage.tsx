@@ -359,7 +359,7 @@ export default function ProductDetailPage() {
                   title: `Кол-во (${p.unit})`,
                   dataIndex: 'totalQty',
                   align: 'right' as const,
-                  render: (v: number) => moneyFormatter(v),
+                  render: (v: number) => formatQty(v),
                 },
               ]}
             />

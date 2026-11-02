@@ -8,6 +8,11 @@ import {
   sqlMovementIncludedInProductAnalytics,
   sqlMovementIsAnalyticsCorrection,
 } from '../../lib/inventoryAnalytics';
+import {
+  SQL_ANALYTICS_LINE_REVENUE_DI,
+  SQL_DEALS_REVENUE_ANALYTICS_FILTER,
+  SQL_EFFECTIVE_REVENUE_ITEM_TS,
+} from '../../lib/analytics/sqlFragments';
 import { auditLog } from '../../lib/logger';
 import { deleteImageFromStorage } from '../../lib/imageStorage';
 import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto, CreateReservationDto, ImportExcelResult, ImportedProduct } from './warehouse.dto';
@@ -768,12 +773,15 @@ export class WarehouseService {
     const movementDateFilter = from
       ? Prisma.sql`AND ${businessDate} >= ${from}`
       : Prisma.empty;
-    const dealDateFilter = from ? Prisma.sql`AND d.created_at >= ${from}` : Prisma.empty;
+    // Продажи — по той же дате и формуле, что выручка на дашборде и в аналитике (дата строки:
+    // закрытие сделки), а не по созданию сделки: иначе сделка, открытая в прошлом периоде и
+    // закрытая в этом, в «Продано» не попадала, а в «Отгрузку» попадала.
+    const salesDateFilter = from ? Prisma.sql`AND ${SQL_EFFECTIVE_REVENUE_ITEM_TS} >= ${from}` : Prisma.empty;
 
     const { granularity, allowed } = resolveProductChartGranularity(period, granularityParam);
     const bucketExpr = sqlInventoryMovementBucket(granularity);
 
-    const [totalsRow, seriesRows, correctionsOutsideRow, dealItems, topClientsRaw] = await Promise.all([
+    const [totalsRow, seriesRows, correctionsOutsideRow, salesRows, topClientsRaw] = await Promise.all([
       prisma.$queryRaw<{ total_in: string; total_sale: string }[]>(
         Prisma.sql`
         SELECT
@@ -808,28 +816,29 @@ export class WarehouseService {
           ${movementDateFilter}
           AND ${sqlMovementIsAnalyticsCorrection('m')}`,
       ),
-      prisma.dealItem.findMany({
-        where: {
-          productId,
-          deal: {
-            ...(from ? { createdAt: { gte: from } } : {}),
-            status: 'CLOSED',
-          },
-        },
-        select: { requestedQty: true, price: true, deal: { select: { id: true, clientId: true, status: true } } },
-      }),
-      prisma.$queryRaw<{ client_id: string; company_name: string; is_svip: boolean; total_qty: number }[]>(
+      prisma.$queryRaw<{ qty: string; revenue: string; deals: number }[]>(
         Prisma.sql`
-          SELECT c.id as client_id, c.company_name, c.is_svip as is_svip, COALESCE(SUM(di.requested_qty), 0)::int as total_qty
+          SELECT COALESCE(SUM(di.requested_qty::numeric), 0)::text AS qty,
+                 COALESCE(SUM(${SQL_ANALYTICS_LINE_REVENUE_DI}), 0)::text AS revenue,
+                 COUNT(DISTINCT d.id)::int AS deals
+          FROM deal_items di
+          JOIN deals d ON d.id = di.deal_id
+          WHERE di.product_id = ${productId}
+            AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+            ${salesDateFilter}`,
+      ),
+      prisma.$queryRaw<{ client_id: string; company_name: string; is_svip: boolean; total_qty: string }[]>(
+        Prisma.sql`
+          SELECT c.id as client_id, c.company_name, c.is_svip as is_svip, COALESCE(SUM(di.requested_qty::numeric), 0)::text as total_qty
           FROM deal_items di
           JOIN deals d ON d.id = di.deal_id
           JOIN clients c ON c.id = d.client_id
           WHERE di.product_id = ${productId}
-            ${dealDateFilter}
-            AND d.status = 'CLOSED'
+            AND ${SQL_DEALS_REVENUE_ANALYTICS_FILTER}
+            ${salesDateFilter}
             AND di.requested_qty > 0
           GROUP BY c.id, c.company_name, c.is_svip
-          ORDER BY total_qty DESC
+          ORDER BY SUM(di.requested_qty::numeric) DESC
           LIMIT 10
         `,
       ),
@@ -847,9 +856,9 @@ export class WarehouseService {
     }));
 
     // Sales metrics
-    const totalQuantitySold = dealItems.reduce((s, di) => s + Number(di.requestedQty || 0), 0);
-    const totalRevenue = dealItems.reduce((s, di) => s + Number(di.requestedQty || 0) * Number(di.price || 0), 0);
-    const uniqueDeals = new Set(dealItems.map((di) => di.deal.id));
+    const totalQuantitySold = Number(salesRows[0]?.qty ?? 0);
+    const totalRevenue = Number(salesRows[0]?.revenue ?? 0);
+    const dealsUsing = salesRows[0]?.deals ?? 0;
     const avgPricePerUnit = totalQuantitySold > 0 ? totalRevenue / totalQuantitySold : 0;
 
     // Profitability
@@ -872,7 +881,7 @@ export class WarehouseService {
       sales: {
         totalRevenue,
         totalQuantitySold,
-        dealsUsing: uniqueDeals.size,
+        dealsUsing,
         avgPricePerUnit,
       },
       /** Только с открытой себестоимостью — себестоимость и маржа. Остальным ключа в ответе нет. */
