@@ -15,13 +15,13 @@ const tkToday = () => ymd(new Date(Date.now() + 5 * 3600_000));
 const isYmd = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 
 /** Разговор состоялся — как в журнале звонков. */
-const TALKED = Prisma.sql`(COALESCE(cs.bill_sec, 0) > 0 OR cs.answered_at IS NOT NULL
+export const TALKED = Prisma.sql`(COALESCE(cs.bill_sec, 0) > 0 OR cs.answered_at IS NOT NULL
   OR (cs.mobile_type IN ('out', 'in') AND COALESCE(cs.duration_sec, 0) > 0))`;
-const TALK_SEC = Prisma.sql`COALESCE(NULLIF(cs.bill_sec, 0), cs.duration_sec, 0)`;
+export const TALK_SEC = Prisma.sql`COALESCE(NULLIF(cs.bill_sec, 0), cs.duration_sec, 0)`;
 const MISSED = Prisma.sql`(cs.direction = 'INBOUND' AND cs.status = 'MISSED' AND cs.phone_key IS NOT NULL
   AND (cs.mobile_type IS NULL OR cs.mobile_type IN ('missed', 'rejected')))`;
 const NOT_CALLED_BACK = Prisma.sql`(cs.follow_up_at IS NULL AND cs.called_back_at IS NULL)`;
-const NOT_SERVICE = Prisma.sql`(cs.phone_key IS NULL OR cs.phone_key NOT IN (SELECT phone_key FROM service_phones))`;
+export const NOT_SERVICE = Prisma.sql`(cs.phone_key IS NULL OR cs.phone_key NOT IN (SELECT phone_key FROM service_phones))`;
 
 export type PhoneCallsInput = { date_from?: string; date_to?: string; days?: number; manager_id?: string };
 

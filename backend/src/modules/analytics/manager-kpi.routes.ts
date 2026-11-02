@@ -18,6 +18,7 @@ import {
 } from '../../lib/bonus';
 import { summarizeAttendance, workdaysInMonth } from '../../lib/attendanceMarks';
 import { hrReviewScore } from '../employee-cards/employee-cards.service';
+import { TALKED, TALK_SEC, NOT_SERVICE } from '../rop-agent/rop-agent.phone-calls';
 
 const router = Router();
 router.use(authenticate);
@@ -148,7 +149,7 @@ router.get(
 
     const deadCutoff = new Date(start.getTime() - DEAD_NO_SALES_DAYS * 86400000);
 
-    const [goals, prevSalaries, factRaw, assortRaw, deadRaw, clientNotesRaw, boardRaw, clientsRaw, leadsRaw, attendance, hrReviews] =
+    const [goals, prevSalaries, factRaw, assortRaw, deadRaw, clientNotesRaw, boardRaw, phoneRaw, clientsRaw, leadsRaw, attendance, hrReviews] =
       await Promise.all([
         // ──── 1. План на месяц (модель уже есть — та же, что в «Пользователях») ────
         prisma.userMonthlyGoal.findMany({
@@ -235,7 +236,7 @@ router.get(
              AND (lb.last_ts IS NULL OR lb.last_ts < ${deadCutoff})`,
         ),
 
-        // ──── 3. Звонки и контакты: полная заметка клиента + строка доски звонков ────
+        // ──── 3. Звонки и контакты: разговоры по телефону + заметки клиента и доска звонков ────
         prisma.$queryRaw<{ user_id: string; total: string; clients: string; last_at: Date | null }[]>(
           Prisma.sql`SELECT cn.user_id, COUNT(*)::text as total,
              COUNT(DISTINCT cn.client_id)::text as clients,
@@ -254,6 +255,50 @@ router.get(
            WHERE nb.last_call_at >= ${start} AND nb.last_call_at < ${end}
              AND nb.author_id IN (${Prisma.join(ids)})
            GROUP BY nb.author_id`,
+        ),
+        // Главное — состоявшиеся разговоры с рабочего телефона (CallSync), посчитанные как
+        // в журнале «Звонки». Заметка и строка доски добавляются сверху, только если в тот
+        // день с этим клиентом разговора по телефону не было: иначе звонок и заметка о нём
+        // засчитались бы дважды, а контакт без телефона (WhatsApp, встреча) потерялся бы.
+        prisma.$queryRaw<{ user_id: string; calls: number; talk_sec: number; extra_notes: number; clients: number; last_at: Date | null }[]>(
+          Prisma.sql`WITH talks AS (
+             SELECT cs.manager_user_id AS uid, cs.client_id, cs.started_at AS at, ${TALK_SEC} AS sec,
+               ((cs.started_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')::date AS day
+             FROM call_sessions cs
+             WHERE cs.deleted_at IS NULL
+               AND cs.started_at >= ${start} AND cs.started_at < ${end}
+               AND cs.manager_user_id IN (${Prisma.join(ids)})
+               AND ${TALKED} AND ${NOT_SERVICE}
+           ),
+           notes AS (
+             SELECT cn.user_id AS uid, cn.client_id, cn.created_at AS at,
+               ((cn.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')::date AS day
+             FROM client_notes cn
+             WHERE cn.deleted_at IS NULL
+               AND cn.created_at >= ${start} AND cn.created_at < ${end}
+               AND cn.user_id IN (${Prisma.join(ids)})
+             UNION ALL
+             SELECT nb.author_id, nb.client_id, nb.last_call_at,
+               ((nb.last_call_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')::date
+             FROM notes_board_rows nb
+             WHERE nb.last_call_at >= ${start} AND nb.last_call_at < ${end}
+               AND nb.author_id IN (${Prisma.join(ids)})
+           ),
+           everything AS (
+             SELECT uid, client_id, at FROM talks UNION ALL SELECT uid, client_id, at FROM notes
+           )
+           SELECT e.uid AS user_id,
+             COALESCE(t.calls, 0) AS calls, COALESCE(t.sec, 0) AS talk_sec,
+             COALESCE(x.extra, 0) AS extra_notes, e.clients, e.last_at
+           FROM (SELECT uid, COUNT(DISTINCT client_id)::int AS clients, MAX(at) AS last_at
+                 FROM everything GROUP BY uid) e
+           LEFT JOIN (SELECT uid, COUNT(*)::int AS calls, SUM(sec)::int AS sec FROM talks GROUP BY uid) t
+             ON t.uid = e.uid
+           LEFT JOIN (SELECT n.uid, COUNT(*)::int AS extra FROM notes n
+                      WHERE NOT EXISTS (SELECT 1 FROM talks tk
+                        WHERE tk.uid = n.uid AND tk.client_id = n.client_id AND tk.day = n.day)
+                      GROUP BY n.uid) x
+             ON x.uid = e.uid`,
         ),
 
         // ──── 4. Привлечение: когда этот клиент покупал в предыдущий раз ────
@@ -288,7 +333,7 @@ router.get(
         //  1. считаем УНИКАЛЬНЫХ клиентов, а не заметки — спам заметок не помогает;
         //  2. берём только ПЕРВЫЙ контакт с клиентом в периоде;
         //  3. покупка засчитывается, только если она строго ПОСЛЕ контакта
-        //     (created_at заметки проставляет сервер, задним числом не поставить);
+        //     (время заметки проставляет сервер, звонка — телефон; задним числом не поставить);
         //  4. клиент, купивший незадолго ДО контакта, лидом не считается вовсе —
         //     иначе достаточно обзвонить тех, кто и так покупает каждый месяц.
         prisma.$queryRaw<{ manager_id: string; leads: string; converted: string }[]>(
@@ -305,6 +350,14 @@ router.get(
              WHERE nb.last_call_at >= ${start} AND nb.last_call_at < ${end}
                AND nb.author_id IN (${Prisma.join(ids)})
              GROUP BY nb.author_id, nb.client_id
+             UNION ALL
+             SELECT cs.manager_user_id, cs.client_id, MIN(cs.started_at)
+             FROM call_sessions cs
+             WHERE cs.deleted_at IS NULL AND cs.client_id IS NOT NULL
+               AND cs.started_at >= ${start} AND cs.started_at < ${end}
+               AND cs.manager_user_id IN (${Prisma.join(ids)})
+               AND ${TALKED}
+             GROUP BY cs.manager_user_id, cs.client_id
            ),
            first_contact AS (
              SELECT manager_id, client_id, MIN(at) AS contact_at
@@ -365,6 +418,7 @@ router.get(
     const deadByManager = groupBy(deadRaw, (r) => r.manager_id);
     const notesMap = new Map(clientNotesRaw.map((r) => [r.user_id, r]));
     const boardMap = new Map(boardRaw.map((r) => [r.author_id, r]));
+    const phoneMap = new Map(phoneRaw.map((r) => [r.user_id, r]));
     const clientsByManager = groupBy(clientsRaw, (r) => r.manager_id);
     const attByManager = groupBy(attendance, (r) => r.userId);
     const leadsMap = new Map(leadsRaw.map((r) => [r.manager_id, r]));
@@ -392,9 +446,11 @@ router.get(
       const board = boardMap.get(m.id);
       const clientNotes = notes ? Number(notes.total) : 0;
       const boardCalls = board ? Number(board.total) : 0;
-      const lastContact = [notes?.last_at, board?.last_at]
-        .filter((d): d is Date => !!d)
-        .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+      const phone = phoneMap.get(m.id);
+      const phoneCalls = phone?.calls ?? 0;
+      const extraNotes = phone?.extra_notes ?? 0;
+      const contactsTotal = phoneCalls + extraNotes;
+      const lastContact = phone?.last_at ?? null;
 
       let newClients = 0;
       let returned = 0;
@@ -415,7 +471,7 @@ router.get(
         revenueTarget,
         contactsTarget: goal?.callNotesTarget ?? null,
         assortmentPositions: items.length,
-        contactsTotal: clientNotes + boardCalls,
+        contactsTotal,
         clientsAcquired: newClients + returned,
         leadsConverted: leads ? Number(leads.converted) : 0,
         attendanceOnTime: attSum.onTime,
@@ -497,13 +553,15 @@ router.get(
           },
         },
         contacts: {
+          /** Состоявшиеся разговоры с рабочего телефона. */
+          phoneCalls,
+          talkMinutes: Math.round((phone?.talk_sec ?? 0) / 60),
           clientNotes,
           boardCalls,
-          total: clientNotes + boardCalls,
-          uniqueClients: Math.max(
-            notes ? Number(notes.clients) : 0,
-            board ? Number(board.clients) : 0,
-          ),
+          /** Заметки и строки доски в дни, когда с этим клиентом по телефону не говорили. */
+          extraNotes,
+          total: contactsTotal,
+          uniqueClients: phone?.clients ?? 0,
           lastContactAt: lastContact ? lastContact.toISOString() : null,
         },
         clients: { served, new: newClients, returned, regular },

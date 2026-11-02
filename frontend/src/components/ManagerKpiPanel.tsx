@@ -237,7 +237,7 @@ export default function ManagerKpiPanel() {
       width: 110,
       align: 'right' as const,
       render: (_: unknown, r: ManagerKpiRow) => (
-        <Tooltip title={`Заметки в карточке ${r.contacts.clientNotes} · доска звонков ${r.contacts.boardCalls}`}>
+        <Tooltip title={`Разговоров по телефону ${r.contacts.phoneCalls} (${r.contacts.talkMinutes} мин) + заметок без звонка ${r.contacts.extraNotes}`}>
           <span>{r.contacts.total}</span>
         </Tooltip>
       ),
@@ -597,11 +597,24 @@ export default function ManagerKpiPanel() {
 
             <Card size="small" title="3. Звонки и контакты" style={{ marginBottom: 12 }}>
               <Row gutter={[12, 12]}>
-                <Col xs={12} md={6}><Statistic title="Всего" value={detail.contacts.total} /></Col>
-                <Col xs={12} md={6}><Statistic title="Заметки клиента" value={detail.contacts.clientNotes} /></Col>
-                <Col xs={12} md={6}><Statistic title="Доска звонков" value={detail.contacts.boardCalls} /></Col>
+                <Col xs={12} md={6}><Statistic title="Всего в KPI" value={detail.contacts.total} /></Col>
+                <Col xs={12} md={6}>
+                  <Statistic
+                    title="Разговоры по телефону"
+                    value={detail.contacts.phoneCalls}
+                    suffix={<Text type="secondary" style={{ fontSize: 12 }}>{detail.contacts.talkMinutes} мин</Text>}
+                  />
+                </Col>
+                <Col xs={12} md={6}>
+                  <Tooltip title={`Всего заметок в карточке ${detail.contacts.clientNotes}, на доске звонков ${detail.contacts.boardCalls}. В KPI идут только те, что сделаны в день без разговора с этим клиентом по телефону.`}>
+                    <Statistic title="Заметки без звонка" value={detail.contacts.extraNotes} />
+                  </Tooltip>
+                </Col>
                 <Col xs={12} md={6}><Statistic title="Клиентов" value={detail.contacts.uniqueClients} /></Col>
               </Row>
+              <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                Разговор — состоявшийся звонок с рабочего телефона (как в журнале «Звонки»); заметка добавляется сверху, если в тот день по телефону с клиентом не говорили.
+              </Text>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Последний контакт: {detail.contacts.lastContactAt
                   ? dayjs(detail.contacts.lastContactAt).format('DD.MM.YYYY HH:mm')

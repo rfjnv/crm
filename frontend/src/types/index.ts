@@ -957,10 +957,16 @@ export interface ManagerKpiRow {
     };
   };
   contacts: {
+    /** Состоявшиеся разговоры с рабочего телефона (CallSync). */
+    phoneCalls: number;
+    talkMinutes: number;
     /** Полные заметки в карточке клиента. */
     clientNotes: number;
     /** Строки доски звонков. */
     boardCalls: number;
+    /** Заметки и строки доски в дни, когда с этим клиентом по телефону не говорили. */
+    extraNotes: number;
+    /** phoneCalls + extraNotes — идёт в бонус. */
     total: number;
     uniqueClients: number;
     lastContactAt: string | null;
