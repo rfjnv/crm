@@ -27,6 +27,8 @@ export interface CallListItem {
   client: { id: string; companyName: string; contactName: string } | null;
   /** Служебный номер (склад, сотрудник) */
   service: { id: string; name: string } | null;
+  /** Последняя задача «перезвонить» по звонку */
+  callbackTask: { id: string; status: 'TODO' | 'IN_PROGRESS' | 'DONE' | 'APPROVED' } | null;
   /** Первый разговор с этим номером после несостоявшегося звонка */
   followUp: {
     callId: string;
@@ -181,8 +183,13 @@ export interface CallReportDetail extends Omit<CallReportRow, 'callsCount'> {
   }[];
 }
 
+/** Поток звонков: продажи или HR (кандидаты, сотрудники) */
+export type CallChannel = 'SALES' | 'HR';
+
 export interface MobileDeviceRow {
   id: string;
+  /** Назначение телефона */
+  channel: CallChannel;
   model: string | null;
   androidVersion: string | null;
   appVersion: string | null;
@@ -304,7 +311,7 @@ export const mobileApi = {
   revoke: (id: string) => client.post(`/mobile/devices/${id}/revoke`).then((r) => r.data),
   requestLogs: (id: string) => client.post(`/mobile/devices/${id}/request-logs`).then((r) => r.data),
   logUrl: (id: string) => client.get<{ url: string }>(`/mobile/devices/${id}/log-url`).then((r) => r.data),
-  updateDevice: (id: string, data: { recordingsPathOverride?: string | null; simSlot?: number | null }) =>
+  updateDevice: (id: string, data: { recordingsPathOverride?: string | null; simSlot?: number | null; channel?: CallChannel }) =>
     client.put(`/mobile/devices/${id}`, data).then((r) => r.data),
   deviceModels: () =>
     client.get<{ model: string; recordingsPath: string | null; devicesCount: number }[]>('/mobile/device-models').then((r) => r.data),
@@ -316,4 +323,20 @@ export const mobileApi = {
   driveDisconnect: () => client.post('/mobile/drive/disconnect').then((r) => r.data),
   driveSync: () => client.post('/mobile/drive/sync').then((r) => r.data),
   updateSettings: (data: Partial<MobileSettings>) => client.put<MobileSettings>('/mobile/settings', data).then((r) => r.data),
+};
+
+/**
+ * «Звонки HR» — отдельный поток телефона HR. Видят сама HR (свои), директор и сотрудники
+ * с правом view_hr_calls (все). Запись слушается по ссылке отсюда, а не из /calls.
+ */
+export const hrCallsApi = {
+  list: (filters: CallsFilters) => client.get<CallsPage>('/hr-calls', { params: filters }).then((r) => r.data),
+  missed: () => client.get<MissedSummary>('/hr-calls/missed').then((r) => r.data),
+  get: (id: string) => client.get<CallDetail>(`/hr-calls/${id}`).then((r) => r.data),
+  history: (id: string) => client.get<{ items: CallListItem[] }>(`/hr-calls/${id}/history`).then((r) => r.data),
+  audioUrl: (id: string) => client.get<{ url: string; expiresInSec: number }>(`/hr-calls/${id}/audio-url`).then((r) => r.data),
+  callbackTask: (id: string) =>
+    client.post<{ taskId: string; existing: boolean }>(`/hr-calls/${id}/callback-task`, {}).then((r) => r.data),
+  calledBack: (id: string) => client.post<{ calls: number; tasks: number }>(`/hr-calls/${id}/called-back`).then((r) => r.data),
+  remove: (callIds: string[]) => client.post<{ deleted: number }>('/hr-calls/delete', { callIds }).then((r) => r.data),
 };

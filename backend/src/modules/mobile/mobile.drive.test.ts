@@ -120,6 +120,7 @@ describe('имена файлов в архиве', () => {
     })).toEqual({
       folders: ['Дилноза Каримова', '2026-10'],
       name: '2026-10-03 14-25 Входящий +998 90 123 45 67 Print House.m4a',
+      root: 'sales',
     });
   });
 
@@ -130,7 +131,13 @@ describe('имена файлов в архиве', () => {
       fileName: 'Call@Шерзод (998901234567)_20261003.amr',
       createdAt: new Date('2026-10-31T20:00:00Z'),
       call: null,
-    })).toEqual({ folders: ['Фарход', '2026-11', 'Без звонка'], name: 'Call@Шерзод (998901234567)_20261003.amr' });
+    })).toEqual({ folders: ['Фарход', '2026-11', 'Без звонка'], name: 'Call@Шерзод (998901234567)_20261003.amr', root: 'sales' });
+
+    // Запись с телефона HR — в отдельную корневую папку
+    expect(archiveLocation({
+      managerName: 'Гулнора HR', ext: 'm4a', fileName: 'r.m4a', createdAt: new Date('2026-10-03T09:30:00Z'), channel: 'HR',
+      call: { startedAt: new Date('2026-10-03T09:25:30Z'), mobileType: 'in', phone: '+998901234567', clientName: null },
+    })).toMatchObject({ folders: ['Гулнора HR', '2026-10'], root: 'hr' });
   });
 
   it('запрещённые символы убираются', () => {

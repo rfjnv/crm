@@ -114,7 +114,8 @@ export async function authenticateMobile(body: unknown) {
       data: { active: false, revokedAt: now },
     });
     return tx.mobileDevice.create({
-      data: { userId, tokenHash: hashDeviceToken(token), lastSeenAt: now, ...deviceInfoData(device) },
+      // Телефон сотрудника HR сразу пишет звонки в поток HR; потом назначение можно сменить в админке
+      data: { userId, tokenHash: hashDeviceToken(token), lastSeenAt: now, channel: user.role === 'HR' ? 'HR' : 'SALES', ...deviceInfoData(device) },
       select: { id: true },
     });
   });
@@ -195,6 +196,7 @@ async function ingestOne(device: DeviceContext, c: MobileCallInput): Promise<{ r
     const session = await prisma.callSession.create({
       data: {
         provider: 'MOBILE',
+        channel: device.channel,
         externalCallId,
         direction,
         status,
@@ -299,13 +301,13 @@ function storagePathFor(userId: string, at: Date, ext: string): string {
 }
 
 /** Ставим ли запись звонка в очередь на транскрибацию и аудит. */
-async function audioStatusFor(session: Pick<CallSession, 'durationSec' | 'phoneKey'>): Promise<{ audioStatus: 'UPLOADED' | 'SKIPPED'; audioError: string | null }> {
+async function audioStatusFor(session: Pick<CallSession, 'durationSec' | 'phoneKey' | 'channel'>): Promise<{ audioStatus: 'UPLOADED' | 'SKIPPED'; audioError: string | null }> {
   // Без постоянного анализа запись ждёт ручного запуска (кнопка «Проанализировать»)
   const skip = await autoAnalysisSkipReason(session);
   return skip ? { audioStatus: 'SKIPPED', audioError: skip } : { audioStatus: 'UPLOADED', audioError: null };
 }
 
-async function attachRecordingToCall(session: Pick<CallSession, 'id' | 'durationSec' | 'phoneKey'>, storagePath: string | null) {
+async function attachRecordingToCall(session: Pick<CallSession, 'id' | 'durationSec' | 'phoneKey' | 'channel'>, storagePath: string | null) {
   await prisma.callSession.update({
     where: { id: session.id },
     data: { recordingPath: storagePath, audioAttempts: 0, ...(await audioStatusFor(session)) },
@@ -341,7 +343,7 @@ export async function receiveAudio(
     ? await prisma.callSession.findFirst({
       // Чей телефон — по externalCallId: менеджера у звонка руководитель мог сменить
       where: { id: callId, provider: 'MOBILE', deletedAt: null, externalCallId: { startsWith: `mobile:${device.userId}:` } },
-      select: { id: true, durationSec: true, startedAt: true, phoneKey: true },
+      select: { id: true, durationSec: true, startedAt: true, phoneKey: true, channel: true },
     })
     : null;
   if (callId && !session) throw new AppError(404, 'Звонок не найден');
@@ -367,6 +369,7 @@ export async function receiveAudio(
     recording = await prisma.callRecording.create({
       data: {
         sha256: sha,
+        channel: device.channel,
         callSessionId: session?.id ?? null,
         userId: device.userId,
         deviceId: device.id,

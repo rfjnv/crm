@@ -137,6 +137,8 @@ function tree(a: MenuAccess): { key: string; title?: string; items: DraftNode[] 
             { key: '/reviews', to: '/reviews', text: 'Отзывы', show: hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'OPERATOR') },
             { key: '/product-feedback', to: '/product-feedback', text: 'Обзвон по товару', show: hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'OPERATOR') },
             { key: '/calls', to: '/calls', text: 'Звонки', show: hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER') || hasPermission('use_rop_agent') },
+            // Своё право, без поблажки администраторам — как на сервере
+            { key: '/hr-calls', to: '/hr-calls', text: 'Звонки HR', show: hasRole('SUPER_ADMIN', 'HR') || a.ownPermissions.includes('view_hr_calls') },
           ],
         },
         {

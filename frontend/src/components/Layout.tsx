@@ -75,6 +75,7 @@ const OpenAiIcon = (props: any) => <Icon component={OpenAiSvg} {...props} />;
 import type { MenuProps } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
+import { canUseHrCalls } from './calls/callsUi';
 import { authApi } from '../api/auth.api';
 import { enrichUserFromMe, isSiteAdminUser } from '../lib/authUser';
 import { getFirstName } from '../lib/name-utils';
@@ -407,6 +408,14 @@ export default function Layout() {
         key: '/calls',
         icon: <PhoneOutlined />,
         label: <Link to="/calls">Звонки</Link>,
+      }]
+      : []),
+    // Не через hasPermission: администраторам звонки HR не открываются автоматически
+    ...(canUseHrCalls(user)
+      ? [{
+        key: '/hr-calls',
+        icon: <PhoneOutlined />,
+        label: <Link to="/hr-calls">Звонки HR</Link>,
       }]
       : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'ACCOUNTANT')

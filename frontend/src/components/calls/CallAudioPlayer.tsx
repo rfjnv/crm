@@ -10,7 +10,12 @@ const RATES = [1, 1.5, 2];
  * Плеер записи. Ссылка (signed URL на час) запрашивается только по нажатию «Слушать» —
  * чтобы не выпускать ссылки на все записи страницы и не платить за лишние запросы.
  */
-export default function CallAudioPlayer({ callId, block }: { callId: string; block?: boolean }) {
+export default function CallAudioPlayer({ callId, block, getUrl = callsApi.audioUrl }: {
+  callId: string;
+  block?: boolean;
+  /** Откуда брать ссылку: у «Звонков HR» свой адрес с проверкой доступа к HR */
+  getUrl?: (id: string) => Promise<{ url: string }>;
+}) {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [rate, setRate] = useState(1);
@@ -23,7 +28,7 @@ export default function CallAudioPlayer({ callId, block }: { callId: string; blo
   const load = async () => {
     setLoading(true);
     try {
-      const res = await callsApi.audioUrl(callId);
+      const res = await getUrl(callId);
       setUrl(res.url);
     } catch (err) {
       message.error(apiErrorMessage(err, 'Не удалось получить запись'));

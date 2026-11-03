@@ -48,6 +48,7 @@ beforeEach(() => {
     { id: 'm1', fullName: 'Дилноза Каримова', role: 'MANAGER', isActive: true },
     { id: 'm2', fullName: 'Фарход Алиев', role: 'MANAGER', isActive: true },
     { id: 'gone', fullName: 'Уволенный', role: 'MANAGER', isActive: false },
+    { id: 'hr', fullName: 'Гулнора HR', role: 'HR', isActive: true },
   );
 });
 
@@ -84,6 +85,28 @@ describe('POST /api/mobile/pairing-code — телефоны подключае�
     // Код одноразовый
     const again = await post('/api/mobile/auth', { pairing_code: code.body.code });
     expect(again.status).toBe(401);
+  });
+
+  it('телефон сотрудника HR сразу пишет звонки в поток HR, менеджера — в продажи', async () => {
+    for (const [userId, channel] of [['hr', 'HR'], ['m2', 'SALES']] as const) {
+      const code = await post('/api/mobile/pairing-code', { userId }, admin);
+      const login = await post('/api/mobile/auth', { pairing_code: code.body.code });
+      expect(login.status).toBe(200);
+      expect(state.fake.db.mobileDevice.find((d: any) => d.id === login.body.device_id)).toMatchObject({ userId, channel });
+    }
+  });
+
+  it('назначение телефона (продажи / HR) меняет только администратор', async () => {
+    state.fake.db.mobileDevice.push({ id: 'd1', userId: 'm1', active: true, channel: 'SALES' });
+    const put = (user: object) => fetch(`${base}/api/mobile/devices/d1`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', 'x-test-user': JSON.stringify(user) },
+      body: JSON.stringify({ channel: 'HR' }),
+    }).then((r) => r.status);
+    expect(await put(rop)).toBe(403);
+    expect(state.fake.db.mobileDevice[0].channel).toBe('SALES');
+    expect(await put(admin)).toBe(200);
+    expect(state.fake.db.mobileDevice[0].channel).toBe('HR');
   });
 
   it('РОП (use_rop_agent) тоже может подключать телефоны', async () => {

@@ -1,3 +1,4 @@
+import type { CallChannel } from '@prisma/client';
 import fs from 'fs/promises';
 import prisma from '../../lib/prisma';
 import { formatUzPhone } from '../../lib/phone';
@@ -40,22 +41,25 @@ export interface ArchiveNameInput {
   fileName: string;
   createdAt: Date;
   call: { startedAt: Date; mobileType: string | null; phone: string | null; clientName: string | null } | null;
+  /** Запись с телефона HR — в отдельную корневую папку */
+  channel?: CallChannel;
 }
 
 /**
  * Где лежит запись на Drive: «CallSync — записи звонков / Дилноза Каримова / 2026-10 /
  * 2026-10-03 14-25 Входящий +998 90 123 45 67 Print House.m4a». Без звонка — в «Без звонка».
  */
-export function archiveLocation(input: ArchiveNameInput): { folders: string[]; name: string } {
+export function archiveLocation(input: ArchiveNameInput): { folders: string[]; name: string; root: 'sales' | 'hr' } {
   const manager = safeDriveName(input.managerName);
+  const root = input.channel === 'HR' ? 'hr' as const : 'sales' as const;
   if (!input.call) {
     const { month } = tashkentParts(input.createdAt);
-    return { folders: [manager, month, 'Без звонка'], name: safeDriveName(input.fileName) };
+    return { folders: [manager, month, 'Без звонка'], name: safeDriveName(input.fileName), root };
   }
   const { month, stamp } = tashkentParts(input.call.startedAt);
   const type = input.call.mobileType ? MOBILE_CALL_TYPE_LABELS[input.call.mobileType as MobileCallType] ?? input.call.mobileType : 'Звонок';
   const parts = [stamp, type, formatUzPhone(input.call.phone) ?? input.call.phone ?? 'скрытый номер', input.call.clientName].filter(Boolean);
-  return { folders: [manager, month], name: `${safeDriveName(parts.join(' '))}.${input.ext}` };
+  return { folders: [manager, month], name: `${safeDriveName(parts.join(' '))}.${input.ext}`, root };
 }
 
 let archiving = false;
@@ -75,6 +79,7 @@ export async function archiveRecordings(): Promise<number> {
         storagePath: true,
         fileName: true,
         createdAt: true,
+        channel: true,
         callSessionId: true,
         user: { select: { fullName: true } },
         callSession: { select: { startedAt: true, mobileType: true, phone: true, client: { select: { companyName: true } } } },
@@ -89,12 +94,13 @@ export async function archiveRecordings(): Promise<number> {
           ext,
           fileName: rec.fileName,
           createdAt: rec.createdAt,
+          channel: rec.channel,
           call: rec.callSession
             ? { startedAt: rec.callSession.startedAt, mobileType: rec.callSession.mobileType, phone: rec.callSession.phone, clientName: rec.callSession.client?.companyName ?? null }
             : null,
         });
         local = await downloadToTemp(rec.storagePath!);
-        let folderId = await ensureFolderPath(where.folders);
+        let folderId = await ensureFolderPath(where.folders, where.root);
         let fileId: string;
         try {
           fileId = await uploadToDrive(local, where.name, audioMime(ext), folderId);
@@ -102,7 +108,7 @@ export async function archiveRecordings(): Promise<number> {
           // Папку удалили руками на Drive — создаём заново и пробуем ещё раз
           if ((err as { status?: number }).status !== 404) throw err;
           await resetFolders();
-          folderId = await ensureFolderPath(where.folders);
+          folderId = await ensureFolderPath(where.folders, where.root);
           fileId = await uploadToDrive(local, where.name, audioMime(ext), folderId);
         }
         await prisma.callRecording.update({

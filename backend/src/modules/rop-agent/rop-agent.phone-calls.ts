@@ -21,7 +21,8 @@ export const TALK_SEC = Prisma.sql`COALESCE(NULLIF(cs.bill_sec, 0), cs.duration_
 const MISSED = Prisma.sql`(cs.direction = 'INBOUND' AND cs.status = 'MISSED' AND cs.phone_key IS NOT NULL
   AND (cs.mobile_type IS NULL OR cs.mobile_type IN ('missed', 'rejected')))`;
 const NOT_CALLED_BACK = Prisma.sql`(cs.follow_up_at IS NULL AND cs.called_back_at IS NULL)`;
-export const NOT_SERVICE = Prisma.sql`(cs.phone_key IS NULL OR cs.phone_key NOT IN (SELECT phone_key FROM service_phones))`;
+/** Звонки продаж с клиентами: без служебных номеров и без потока HR (кандидаты, сотрудники). */
+export const NOT_SERVICE = Prisma.sql`((cs.phone_key IS NULL OR cs.phone_key NOT IN (SELECT phone_key FROM service_phones)) AND cs.channel = 'SALES')`;
 
 export type PhoneCallsInput = { date_from?: string; date_to?: string; days?: number; manager_id?: string };
 

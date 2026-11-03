@@ -47,7 +47,7 @@ async function lastContacts(clientIds: string[]): Promise<Map<string, LastContac
         (CASE WHEN c.direction = 'INBOUND' THEN 'Входящий звонок' ELSE 'Исходящий звонок' END)
           || CASE WHEN c.duration_sec > 0 THEN ', ' || GREATEST(1, ROUND(c.duration_sec / 60.0))::int || ' мин' ELSE '' END AS text
       FROM call_sessions c JOIN users u ON u.id = c.manager_user_id
-      WHERE c.client_id = ANY(${clientIds}::text[]) AND c.answered_at IS NOT NULL
+      WHERE c.client_id = ANY(${clientIds}::text[]) AND c.answered_at IS NOT NULL AND c.channel = 'SALES'
       ORDER BY c.client_id, c.started_at DESC`),
     prisma.$queryRaw<Row[]>(Prisma.sql`
       SELECT DISTINCT ON (n.client_id) n.client_id, n.created_at AS at, u.id AS user_id, u.full_name AS user_name, n.content AS text

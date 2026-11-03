@@ -101,6 +101,8 @@ export const callbackTaskDto = z.object({
 export const updateDeviceDto = z.object({
   recordingsPathOverride: z.string().trim().max(500).nullable().optional(),
   simSlot: z.number().int().min(1).max(8).nullable().optional(),
+  /** Назначение: продажи или HR — для новых звонков */
+  channel: z.enum(['SALES', 'HR']).optional(),
 });
 
 export const deviceModelConfigDto = z.object({

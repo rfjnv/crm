@@ -20,6 +20,11 @@ const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
 const SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/drive.file'];
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 export const DRIVE_ROOT_FOLDER_NAME = 'CallSync — записи звонков';
+/**
+ * Записи телефона HR — в отдельной корневой папке, рядом с архивом продаж, а не внутри него:
+ * доступ к папке продаж не открывает разговоры с кандидатами и сотрудниками.
+ */
+export const DRIVE_HR_ROOT_FOLDER_NAME = 'CallSync — HR';
 
 export function isDriveConfigured(): boolean {
   return !!(config.googleDrive.clientId && config.googleDrive.clientSecret);
@@ -206,9 +211,9 @@ async function rootFolderId(): Promise<string> {
   return id;
 }
 
-/** Папка по пути внутри корневой: ['Дилноза Каримова', '2026-10']. */
-export async function ensureFolderPath(segments: string[]): Promise<string> {
-  let parent = await rootFolderId();
+/** Папка по пути внутри корневой: ['Дилноза Каримова', '2026-10']. root 'hr' — отдельная папка HR. */
+export async function ensureFolderPath(segments: string[], root: 'sales' | 'hr' = 'sales'): Promise<string> {
+  let parent = root === 'hr' ? await findOrCreateFolder(DRIVE_HR_ROOT_FOLDER_NAME, null) : await rootFolderId();
   for (const segment of segments) parent = await findOrCreateFolder(segment, parent);
   return parent;
 }

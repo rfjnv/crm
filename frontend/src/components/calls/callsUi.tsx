@@ -118,6 +118,19 @@ export function canSeeAllCalls(user: User | null | undefined): boolean {
   return user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' || (user.permissions ?? []).includes('use_rop_agent' as Permission);
 }
 
+/**
+ * Раздел «Звонки HR»: сама HR — свои звонки, директор и право view_hr_calls — все.
+ * ADMIN и РОП — нет, пока им не выдано право (как на сервере).
+ */
+export function canSeeAllHrCalls(user: User | null | undefined): boolean {
+  if (!user) return false;
+  return user.role === 'SUPER_ADMIN' || (user.permissions ?? []).includes('view_hr_calls' as Permission);
+}
+
+export function canUseHrCalls(user: User | null | undefined): boolean {
+  return !!user && (user.role === 'HR' || canSeeAllHrCalls(user));
+}
+
 /** Текст ошибки из ответа API */
 export function apiErrorMessage(err: unknown, fallback = 'Не получилось'): string {
   const data = (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data;

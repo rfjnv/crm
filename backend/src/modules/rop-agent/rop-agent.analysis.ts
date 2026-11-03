@@ -41,7 +41,7 @@ const LAST_CONTACT = Prisma.sql`
   SELECT client_id, MAX(at) AS last_contact_at FROM (
     SELECT client_id, created_at AS at FROM client_notes WHERE deleted_at IS NULL
     UNION ALL
-    SELECT client_id, started_at AS at FROM call_sessions WHERE client_id IS NOT NULL
+    SELECT client_id, started_at AS at FROM call_sessions WHERE client_id IS NOT NULL AND channel = 'SALES'
   ) x GROUP BY client_id`;
 
 /**

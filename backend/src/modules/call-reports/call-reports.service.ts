@@ -3,6 +3,7 @@ import { AppError } from '../../lib/errors';
 import { TASHKENT_OFFSET_MS } from '../../lib/tz';
 import { needsCallback } from '../mobile/mobile.mapping';
 import { notServiceWhere } from '../mobile/mobile.service-phones';
+import { salesChannelWhere } from '../mobile/mobile.access';
 
 /**
  * Отчёт по звонкам для HR и руководства: сколько звонил каждый сотрудник,
@@ -106,6 +107,8 @@ async function loadRows(from: Date, to: Date, userId?: string): Promise<Row[]> {
     where: {
       AND: [
         { deletedAt: null, managerUserId: userId ? userId : { not: null }, startedAt: { gte: from, lt: to } },
+        // Звонки HR — отдельный поток, в отчёты продаж не попадают
+        salesChannelWhere(),
         { direction: { in: ['INBOUND', 'OUTBOUND'] } },
         await notServiceWhere(),
       ],

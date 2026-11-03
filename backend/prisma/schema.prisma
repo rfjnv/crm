@@ -1267,6 +1267,12 @@ enum TelephonyProvider {
   MOBILE
 }
 
+/// Поток звонков: продажи или HR (кандидаты, сотрудники). Звонки HR не попадают никуда в продажи.
+enum CallChannel {
+  SALES
+  HR
+}
+
 /// Что с записью разговора: очередь транскрибации и аудита живёт в БД, а не в памяти процесса.
 enum CallAudioStatus {
   NONE
@@ -1818,6 +1824,8 @@ model TelephonyExtension {
 model CallSession {
   id              String            @id @default(uuid())
   provider        TelephonyProvider @default(ASTERISK)
+  /// Продажи или HR — по назначению телефона, с которого пришёл звонок
+  channel         CallChannel       @default(SALES)
   /// Для мобильных: mobile:<userId>:<device_call_id> — идемпотентность по паре (сотрудник, device_call_id)
   externalCallId  String            @unique @map("external_call_id")
   direction       CallDirection
@@ -1881,6 +1889,7 @@ model CallSession {
   @@index([status, startedAt])
   @@index([startedAt])
   @@index([provider, startedAt])
+  @@index([channel, startedAt])
   @@index([phone])
   @@index([phoneKey, startedAt])
   @@index([audioStatus])
@@ -1893,6 +1902,8 @@ model CallRecording {
   id             String    @id @default(uuid())
   sha256         String    @unique
   callSessionId  String?   @map("call_session_id")
+  /// Для несопоставленных записей, у которых нет звонка
+  channel        CallChannel @default(SALES)
   userId         String    @map("user_id")
   deviceId       String?   @map("device_id")
   /// Путь в bucket call-recordings; null — файл удалён по сроку хранения
@@ -1923,6 +1934,8 @@ model CallRecording {
 model MobileDevice {
   id                     String    @id @default(uuid())
   userId                 String    @map("user_id")
+  /// Назначение телефона: продажи или HR. Смена действует на новые звонки
+  channel                CallChannel @default(SALES)
   model                  String?
   androidVersion         String?   @map("android_version")
   sdkInt                 Int?      @map("sdk_int")

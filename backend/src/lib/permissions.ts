@@ -33,6 +33,8 @@ export const PERMISSIONS = {
   USE_ROP_AGENT: 'use_rop_agent',
   /** Менеджер, который ещё и помогает бухгалтеру: везде, где пускают бухгалтера, пускают и его (lib/roles.ts). */
   ACCOUNTANT_ASSISTANT: 'accountant_assistant',
+  /** Звонки HR (кандидаты, сотрудники) — все. Кроме директора, выдаётся поимённо; сама HR видит свои и без него. */
+  VIEW_HR_CALLS: 'view_hr_calls',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -45,6 +47,7 @@ const SUPER_ONLY: Permission[] = [
   PERMISSIONS.DELETE_ANY_DEAL,
   PERMISSIONS.VIEW_AUDIT_HISTORY,
   PERMISSIONS.USE_ROP_AGENT,
+  PERMISSIONS.VIEW_HR_CALLS,
 ];
 
 export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {

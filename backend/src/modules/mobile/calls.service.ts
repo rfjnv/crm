@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { CallChannel, Prisma } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { config } from '../../lib/config';
 import prisma from '../../lib/prisma';
@@ -6,7 +6,7 @@ import { AppError } from '../../lib/errors';
 import { canonicalClientPhone } from '../../lib/phone';
 import { tashkentStartOfToday, TASHKENT_OFFSET_MS } from '../../lib/tz';
 import type { ListCallsQuery } from './mobile.dto';
-import { canSeeAllCalls, callScope } from './mobile.access';
+import { canSeeAllCalls, canSeeAllHrCalls, callScope, hrCallScope, salesChannelWhere } from './mobile.access';
 import { CALLBACK_TYPES, MOBILE_CALL_TYPES, clientPhoneKeys } from './mobile.mapping';
 import { callbackTitle, closeCallbacks, findOpenCallbackTask, OPEN_TASK_STATUSES, phoneLabel } from './mobile.processing';
 import { signedUrl } from './mobile.storage';
@@ -66,18 +66,32 @@ interface ListExtras {
   scores: Map<string, number | null>;
   followUpManagers: Map<string, { id: string; fullName: string } | null>;
   services: Map<string, ServicePhoneInfo>;
+  /** Последняя задача «перезвонить» по звонку */
+  callbackTasks: Map<string, { id: string; status: string }>;
 }
 
 async function listExtras(rows: CallListRow[]): Promise<ListExtras> {
   const followUpIds = [...new Set(rows.map((r) => r.followUpCallId).filter((v): v is string => !!v))];
-  const [scores, followUps, services] = await Promise.all([
+  const [scores, followUps, services, tasks] = await Promise.all([
     auditScores(rows.map((r) => r.auditId)),
     followUpIds.length > 0
       ? prisma.callSession.findMany({ where: { id: { in: followUpIds } }, select: { id: true, manager: { select: { id: true, fullName: true } } } })
       : Promise.resolve([]),
     servicePhoneMap(),
+    rows.length > 0
+      ? prisma.task.findMany({
+        where: { callSessionId: { in: rows.map((r) => r.id) } },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, status: true, callSessionId: true },
+      })
+      : Promise.resolve([]),
   ]);
-  return { scores, followUpManagers: new Map(followUps.map((f) => [f.id, f.manager ?? null])), services };
+  return {
+    scores,
+    followUpManagers: new Map(followUps.map((f) => [f.id, f.manager ?? null])),
+    services,
+    callbackTasks: new Map(tasks.map((t) => [t.callSessionId!, { id: t.id, status: t.status }])),
+  };
 }
 
 function toListItem(row: CallListRow, extras: ListExtras) {
@@ -87,6 +101,7 @@ function toListItem(row: CallListRow, extras: ListExtras) {
     counterpart: counterpart(row),
     hasRecording: !!recordingPath || !!driveFileId,
     auditScore: row.auditId ? extras.scores.get(row.auditId) ?? null : null,
+    callbackTask: extras.callbackTasks.get(row.id) ?? null,
     /** Служебный номер (склад, сотрудник) — не клиент и не «неизвестный» */
     service: phoneKey ? extras.services.get(phoneKey) ?? null : null,
     /** Первый разговор с этим номером после несостоявшегося звонка */
@@ -119,8 +134,25 @@ const MISSED_WHERE: Prisma.CallSessionWhereInput = {
   OR: [{ mobileType: null }, { mobileType: { in: CALLBACK_TYPES } }],
 };
 
-export async function listCalls(user: CallsUser, q: ListCallsQuery) {
-  const and: Prisma.CallSessionWhereInput[] = [callScope(user)];
+/**
+ * Какие звонки видны пользователю в разделе. SALES — журнал «Звонки» (без HR даже для директора),
+ * HR — «Звонки HR»: все — директору и с view_hr_calls, свои — сотруднику HR. Нет доступа — 404,
+ * как будто звонка нет.
+ */
+export function scopeFor(user: CallsUser, channel: CallChannel = 'SALES'): Prisma.CallSessionWhereInput {
+  if (channel === 'SALES') return callScope(user);
+  const scope = hrCallScope(user);
+  if (!scope) throw new AppError(404, 'Звонок не найден');
+  return scope;
+}
+
+/** Видит ли пользователь в разделе звонки всех сотрудников (тогда доступен фильтр по сотруднику). */
+function seesEveryone(user: CallsUser, channel: CallChannel): boolean {
+  return channel === 'SALES' ? canSeeAllCalls(user) : canSeeAllHrCalls(user);
+}
+
+export async function listCalls(user: CallsUser, q: ListCallsQuery, channel: CallChannel = 'SALES') {
+  const and: Prisma.CallSessionWhereInput[] = [scopeFor(user, channel)];
   if (q.from || q.to) {
     and.push({
       startedAt: {
@@ -129,7 +161,7 @@ export async function listCalls(user: CallsUser, q: ListCallsQuery) {
       },
     });
   }
-  if (q.managerId && canSeeAllCalls(user)) and.push({ managerUserId: q.managerId });
+  if (q.managerId && seesEveryone(user, channel)) and.push({ managerUserId: q.managerId });
   if (q.type) {
     const types = q.type.split(',').map((t) => t.trim()).filter((t) => (MOBILE_CALL_TYPES as readonly string[]).includes(t));
     if (types.length > 0) and.push({ mobileType: { in: types } });
@@ -186,7 +218,7 @@ const FAILED_WHERE: Prisma.CallSessionWhereInput = {
 export async function callManagers() {
   const groups = await prisma.callSession.groupBy({
     by: ['managerUserId'],
-    where: { deletedAt: null, managerUserId: { not: null } },
+    where: { deletedAt: null, managerUserId: { not: null }, ...salesChannelWhere() },
     _count: { _all: true },
   });
   const ids = groups.map((g) => g.managerUserId).filter((v): v is string => !!v);
@@ -199,11 +231,11 @@ export async function callManagers() {
 }
 
 /** История по номеру: все звонки с этим номером (менеджер видит только свои), новые сверху. */
-export async function phoneHistory(user: CallsUser, id: string) {
+export async function phoneHistory(user: CallsUser, id: string, channel: CallChannel = 'SALES') {
   const call = await findCallForUser(user, id, { phoneKey: true });
   if (!call.phoneKey) return { items: [] };
   const rows = await prisma.callSession.findMany({
-    where: { AND: [callScope(user), { phoneKey: call.phoneKey }] },
+    where: { AND: [scopeFor(user, channel), { phoneKey: call.phoneKey }] },
     orderBy: { startedAt: 'desc' },
     take: 50,
     select: callListSelect,
@@ -213,13 +245,13 @@ export async function phoneHistory(user: CallsUser, id: string) {
 }
 
 /** Звонок с проверкой доступа. Чужой звонок для менеджера — 404, как будто его нет. */
-export async function findCallForUser<S extends Prisma.CallSessionSelect>(user: CallsUser, id: string, select: S) {
-  const row = await prisma.callSession.findFirst({ where: { AND: [{ id }, callScope(user)] }, select });
+export async function findCallForUser<S extends Prisma.CallSessionSelect>(user: CallsUser, id: string, select: S, channel: CallChannel = 'SALES') {
+  const row = await prisma.callSession.findFirst({ where: { AND: [{ id }, scopeFor(user, channel)] }, select });
   if (!row) throw new AppError(404, 'Звонок не найден');
   return row;
 }
 
-export async function getCall(user: CallsUser, id: string) {
+export async function getCall(user: CallsUser, id: string, channel: CallChannel = 'SALES') {
   const row = await findCallForUser(user, id, {
     ...callListSelect,
     transcript: true,
@@ -227,7 +259,7 @@ export async function getCall(user: CallsUser, id: string) {
     deviceId: true,
     rawEvents: true,
     tasks: { select: { id: true, title: true, status: true, dueDate: true }, orderBy: { createdAt: 'desc' } },
-  });
+  }, channel);
   const extras = await listExtras([row]);
   // Итог аудита — прямо в карточке звонка: кто видит звонок, тот видит и разбор
   const audit = row.auditId
@@ -252,8 +284,8 @@ const STREAM_TTL_SEC = 3600;
  * осталась только на Google Drive — ссылка на наш поток с подписанным токеном на час:
  * <audio> не умеет слать заголовок Authorization, а файлы на Drive наружу не открываем.
  */
-export async function getAudioUrl(user: CallsUser, id: string, fallbackServer = '') {
-  const row = await findCallForUser(user, id, { recordingPath: true, driveFileId: true });
+export async function getAudioUrl(user: CallsUser, id: string, fallbackServer = '', channel: CallChannel = 'SALES') {
+  const row = await findCallForUser(user, id, { recordingPath: true, driveFileId: true }, channel);
   if (row.recordingPath) return { url: await signedUrl(row.recordingPath, STREAM_TTL_SEC), expiresInSec: STREAM_TTL_SEC };
   if (row.driveFileId) {
     const t = jwt.sign({ callId: id, purpose: STREAM_PURPOSE }, config.jwt.accessSecret, { expiresIn: STREAM_TTL_SEC });
@@ -283,7 +315,9 @@ export async function linkClient(user: CallsUser, id: string, clientId: string, 
   if (!client) throw new AppError(404, 'Клиент не найден');
 
   const affected = await prisma.callSession.findMany({
-    where: call.phoneKey ? { OR: [{ id: call.id }, { phoneKey: call.phoneKey, clientId: null }] } : { id: call.id },
+    where: call.phoneKey
+      ? { OR: [{ id: call.id }, { phoneKey: call.phoneKey, clientId: null, channel: 'SALES' }] }
+      : { id: call.id },
     select: { id: true, auditId: true },
   });
   await prisma.callSession.updateMany({ where: { id: { in: affected.map((a) => a.id) } }, data: { clientId: client.id } });
@@ -308,17 +342,17 @@ export async function linkClient(user: CallsUser, id: string, clientId: string, 
   };
 }
 
-export async function createCallbackTask(user: CallsUser, id: string, opts: { dueAt?: string; note?: string } = {}) {
+export async function createCallbackTask(user: CallsUser, id: string, opts: { dueAt?: string; note?: string } = {}, channel: CallChannel = 'SALES') {
   const call = await findCallForUser(user, id, {
     id: true,
     phone: true,
     phoneKey: true,
     managerUserId: true,
     client: { select: { companyName: true } },
-  });
+  }, channel);
   const assigneeId = call.managerUserId ?? user.userId;
   if (call.phoneKey) {
-    const open = await findOpenCallbackTask(assigneeId, call.phoneKey);
+    const open = await findOpenCallbackTask(assigneeId, call.phoneKey, channel);
     if (open) return { taskId: open.id, existing: true };
   }
   const task = await prisma.task.create({
@@ -336,11 +370,11 @@ export async function createCallbackTask(user: CallsUser, id: string, opts: { du
 }
 
 /** Кнопка «Перезвонил»: пропущенные с этого номера отработаны, задачи «перезвонить» закрыты. */
-export async function markCalledBack(user: CallsUser, id: string) {
-  const call = await findCallForUser(user, id, { id: true, phoneKey: true, managerUserId: true });
+export async function markCalledBack(user: CallsUser, id: string, channel: CallChannel = 'SALES') {
+  const call = await findCallForUser(user, id, { id: true, phoneKey: true, managerUserId: true }, channel);
   const now = new Date();
   if (call.managerUserId && call.phoneKey) {
-    return closeCallbacks(call.managerUserId, call.phoneKey, now, 'Перезвонил');
+    return closeCallbacks(call.managerUserId, call.phoneKey, now, 'Перезвонил', channel);
   }
   await prisma.callSession.update({ where: { id: call.id }, data: { calledBackAt: now } });
   const tasks = await prisma.task.updateMany({
@@ -357,10 +391,11 @@ type HandledVia = 'callback' | 'client' | 'manual';
 /** Не отработан дольше этого — подсветка у руководителя */
 const OVERDUE_MS = 2 * HOUR_MS;
 
-export async function missedToday(user: CallsUser, now: Date = new Date()) {
-  const leader = canSeeAllCalls(user);
+export async function missedToday(user: CallsUser, now: Date = new Date(), channel: CallChannel = 'SALES') {
+  // Сводка по менеджерам — только у руководителя продаж; в HR — свой список
+  const leader = channel === 'SALES' && canSeeAllCalls(user);
   const rows = await prisma.callSession.findMany({
-    where: { AND: [callScope(user), MISSED_WHERE, await notServiceWhere(), { startedAt: { gte: tashkentStartOfToday() } }] },
+    where: { AND: [scopeFor(user, channel), MISSED_WHERE, await notServiceWhere(), { startedAt: { gte: tashkentStartOfToday() } }] },
     orderBy: { startedAt: 'desc' },
     select: {
       id: true,

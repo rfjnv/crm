@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { CallChannel, Prisma } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { telegramService } from '../telegram/telegram.service';
 import { callLeaderIds } from './mobile.access';
@@ -44,8 +44,9 @@ export function problemLabels(problems: string[]): string {
   return problems.map((p) => PERMISSION_LABELS[p] ?? p).join(', ');
 }
 
-async function notifyLeaders(title: string, body: string): Promise<void> {
-  const ids = await callLeaderIds();
+/** Телефон HR — только директору: РОП звонки HR не касаются */
+async function notifyLeaders(title: string, body: string, channel: CallChannel = 'SALES'): Promise<void> {
+  const ids = await callLeaderIds(channel);
   await Promise.allSettled(ids.map((id) => telegramService.sendToUser(id, { title, body, url: '/mobile-devices', severity: 'WARNING' })));
 }
 
@@ -66,6 +67,7 @@ export async function runMobileChecks(now: Date = new Date()): Promise<MobileChe
     select: {
       id: true,
       userId: true,
+      channel: true,
       createdAt: true,
       lastSeenAt: true,
       permissions: true,
@@ -83,7 +85,7 @@ export async function runMobileChecks(now: Date = new Date()): Promise<MobileChe
     // Телефон молчит больше 2 часов рабочего времени
     const since = d.lastSeenAt ?? d.createdAt;
     if (!d.silentAlertedAt && workingMsBetween(since, now, settings) >= SILENT_AFTER_MS) {
-      await notifyLeaders('Телефон менеджера не на связи', `${name}: CallSync не выходил на связь с ${formatTashkentTime(since, now)}. Телефон выключен, нет интернета или приложение остановлено.`);
+      await notifyLeaders('Телефон менеджера не на связи', `${name}: CallSync не выходил на связь с ${formatTashkentTime(since, now)}. Телефон выключен, нет интернета или приложение остановлено.`, d.channel);
       await prisma.mobileDevice.update({ where: { id: d.id }, data: { silentAlertedAt: now } });
       result.silent += 1;
     }
@@ -92,7 +94,7 @@ export async function runMobileChecks(now: Date = new Date()): Promise<MobileChe
     const problems = deviceProblems(d);
     const key = problems.length > 0 ? problems.join(',') : null;
     if (key && key !== d.problemsAlertKey) {
-      await notifyLeaders('Проблема на телефоне менеджера', `${name}: ${problemLabels(problems)}. Звонки или записи могут не попадать в CRM.`);
+      await notifyLeaders('Проблема на телефоне менеджера', `${name}: ${problemLabels(problems)}. Звонки или записи могут не попадать в CRM.`, d.channel);
       result.problems += 1;
     }
     if (key !== d.problemsAlertKey) {
@@ -114,7 +116,7 @@ export async function runMobileChecks(now: Date = new Date()): Promise<MobileChe
       if (answered > 0) {
         const recordings = await prisma.callRecording.count({ where: { userId: d.userId, createdAt: { gte: from } } });
         if (recordings === 0) {
-          await notifyLeaders('Записи разговоров не приходят', `${name}: за 2 дня ${answered} отвеченных звонков длиннее ${MIN_ANSWERED_SEC} с и ни одной записи. Проверьте запись звонков и папку записей на телефоне.`);
+          await notifyLeaders('Записи разговоров не приходят', `${name}: за 2 дня ${answered} отвеченных звонков длиннее ${MIN_ANSWERED_SEC} с и ни одной записи. Проверьте запись звонков и папку записей на телефоне.`, d.channel);
           await prisma.mobileDevice.update({ where: { id: d.id }, data: { noRecordingsAlertedAt: now } });
           result.noRecordings += 1;
         }

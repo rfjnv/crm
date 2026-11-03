@@ -1,3 +1,4 @@
+import type { CallChannel } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../../lib/prisma';
@@ -11,6 +12,8 @@ export interface DeviceContext {
   recordingsPathOverride: string | null;
   simSlot: number | null;
   uploadLogsRequested: boolean;
+  /** Назначение телефона: звонки продаж или HR */
+  channel: CallChannel;
 }
 
 declare global {
@@ -59,6 +62,7 @@ export function authenticateDevice(req: Request, _res: Response, next: NextFunct
             recordingsPathOverride: true,
             simSlot: true,
             uploadLogsRequested: true,
+            channel: true,
             lastSeenAt: true,
             user: { select: { id: true, role: true, permissions: true, isActive: true, moneyAccess: true } },
           },
@@ -76,6 +80,7 @@ export function authenticateDevice(req: Request, _res: Response, next: NextFunct
         recordingsPathOverride: device.recordingsPathOverride,
         simSlot: device.simSlot,
         uploadLogsRequested: device.uploadLogsRequested,
+        channel: device.channel,
       };
       req.user = {
         userId: device.user.id,

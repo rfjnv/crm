@@ -38,6 +38,7 @@ export type Permission =
   | 'delivery_execute'
   | 'manage_suppliers'
   | 'manage_import_orders'
+  | 'view_hr_calls'
   | 'view_import_orders'
   | 'use_rop_agent'
   | 'accountant_assistant';
@@ -74,9 +75,10 @@ export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'view_import_orders', label: 'Просмотр импорт-заказов (ВЭД)' },
   { key: 'use_rop_agent', label: 'РОП-агент (выдаётся поимённо)' },
   { key: 'accountant_assistant', label: 'Помощник бухгалтера (доступ как у бухгалтера)' },
+  { key: 'view_hr_calls', label: 'Звонки HR — все (выдаётся поимённо)' },
 ];
 
-const SUPER_ONLY: Permission[] = ['super_deal_override', 'delete_any_deal', 'view_audit_history', 'use_rop_agent'];
+const SUPER_ONLY: Permission[] = ['super_deal_override', 'delete_any_deal', 'view_audit_history', 'use_rop_agent', 'view_hr_calls'];
 
 export const DEFAULT_PERMISSIONS: Record<string, Permission[]> = {
   ADMIN: ALL_PERMISSIONS.map((p) => p.key).filter((p) => !SUPER_ONLY.includes(p)),

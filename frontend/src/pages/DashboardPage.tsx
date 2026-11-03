@@ -34,6 +34,7 @@ import type { Permission, UserRole } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import './DashboardPage.css';
 import MissedCallsWidget from '../components/calls/MissedCallsWidget';
+import HrMissedCallsWidget from '../components/calls/HrMissedCallsWidget';
 import AccountantBlocks from '../components/dashboard/AccountantBlocks';
 import { userHasRole } from '../lib/roles';
 
@@ -683,6 +684,8 @@ export default function DashboardPage() {
 
       {/* Пропущенные звонки с рабочих телефонов: менеджеру свои, руководителю сводка */}
       <MissedCallsWidget />
+      {/* У HR — пропущенные с её телефона HR */}
+      <HrMissedCallsWidget />
 
       {/* Цели по выручке: сегодня, месяц по дням, год по месяцам (год — только админам) */}
       {(isAdmin || role === 'MANAGER') && canSeeMoney && (

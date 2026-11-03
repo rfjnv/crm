@@ -265,7 +265,7 @@ router.get(
              SELECT cs.manager_user_id AS uid, cs.client_id, cs.started_at AS at, ${TALK_SEC} AS sec,
                ((cs.started_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent')::date AS day
              FROM call_sessions cs
-             WHERE cs.deleted_at IS NULL
+             WHERE cs.deleted_at IS NULL AND cs.channel = 'SALES'
                AND cs.started_at >= ${start} AND cs.started_at < ${end}
                AND cs.manager_user_id IN (${Prisma.join(ids)})
                AND ${TALKED} AND ${NOT_SERVICE}
@@ -353,7 +353,7 @@ router.get(
              UNION ALL
              SELECT cs.manager_user_id, cs.client_id, MIN(cs.started_at)
              FROM call_sessions cs
-             WHERE cs.deleted_at IS NULL AND cs.client_id IS NOT NULL
+             WHERE cs.deleted_at IS NULL AND cs.channel = 'SALES' AND cs.client_id IS NOT NULL
                AND cs.started_at >= ${start} AND cs.started_at < ${end}
                AND cs.manager_user_id IN (${Prisma.join(ids)})
                AND ${TALKED}

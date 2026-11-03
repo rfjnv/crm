@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type { CallChannel } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { config } from '../../lib/config';
 import { AppError } from '../../lib/errors';
@@ -27,7 +28,8 @@ export type AnalysisMode = 'AUDIT' | 'TRANSCRIPT';
  */
 export async function requestAnalysis(user: ActingUser, callIds: string[], mode: AnalysisMode = 'AUDIT') {
   const calls = await prisma.callSession.findMany({
-    where: { id: { in: callIds }, deletedAt: null },
+    // Только продажи: промпт аудита написан под продажи, звонки HR не разбираем
+    where: { id: { in: callIds }, deletedAt: null, channel: 'SALES' },
     select: { id: true, recordingPath: true, driveFileId: true, audioStatus: true, auditId: true, transcript: true, analysisRequest: true },
   });
   const result = { queued: 0, alreadyDone: 0, noRecording: 0, inProgress: 0 };
@@ -51,10 +53,10 @@ export async function requestAnalysis(user: ActingUser, callIds: string[], mode:
 }
 
 /** Звонок принял другой сотрудник (подменял коллегу) — переписать звонки, их аудиты и открытые задачи на него. */
-export async function reassignCalls(callIds: string[], managerId: string) {
+export async function reassignCalls(callIds: string[], managerId: string, channel: CallChannel = 'SALES') {
   const manager = await prisma.user.findFirst({ where: { id: managerId, isActive: true }, select: { id: true, fullName: true } });
   if (!manager) throw new AppError(404, 'Сотрудник не найден');
-  const calls = await prisma.callSession.findMany({ where: { id: { in: callIds }, deletedAt: null }, select: { id: true, auditId: true } });
+  const calls = await prisma.callSession.findMany({ where: { id: { in: callIds }, deletedAt: null, channel }, select: { id: true, auditId: true } });
   const ids = calls.map((c) => c.id);
   await prisma.callSession.updateMany({ where: { id: { in: ids } }, data: { managerUserId: manager.id } });
   await prisma.task.updateMany({ where: { callSessionId: { in: ids }, status: { in: OPEN_TASK_STATUSES } }, data: { assigneeId: manager.id } });
@@ -70,8 +72,9 @@ export async function reassignCalls(callIds: string[], managerId: string) {
  * из статистики. Сама строка звонка остаётся помеченной удалённой: иначе телефон при
  * повторной отправке создал бы звонок заново.
  */
-export async function deleteCalls(user: ActingUser, callIds: string[]) {
-  const calls = await prisma.callSession.findMany({ where: { id: { in: callIds }, deletedAt: null }, select: { id: true, auditId: true } });
+/** channel — из какого раздела удаляют: из «Звонков» нельзя удалить звонок HR и наоборот */
+export async function deleteCalls(user: ActingUser, callIds: string[], channel: CallChannel = 'SALES') {
+  const calls = await prisma.callSession.findMany({ where: { id: { in: callIds }, deletedAt: null, channel }, select: { id: true, auditId: true } });
   const ids = calls.map((c) => c.id);
   if (ids.length === 0) return { deleted: 0 };
 
@@ -143,7 +146,7 @@ export async function createGroupReport(user: ActingUser, callIds: string[], tit
   if (unique.length === 0) throw new AppError(400, 'Выберите звонки');
   if (unique.length > MAX_REPORT_CALLS) throw new AppError(400, `Не больше ${MAX_REPORT_CALLS} звонков в одном анализе`);
   const calls = await prisma.callSession.findMany({
-    where: { id: { in: unique }, deletedAt: null },
+    where: { id: { in: unique }, deletedAt: null, channel: 'SALES' },
     select: { id: true, startedAt: true, recordingPath: true, driveFileId: true, transcript: true },
     orderBy: { startedAt: 'asc' },
   });

@@ -1,4 +1,4 @@
-import { Prisma, type CallSession, type TaskStatus } from '@prisma/client';
+import { Prisma, type CallChannel, type CallSession, type TaskStatus } from '@prisma/client';
 import prisma from '../../lib/prisma';
 import { formatUzPhone } from '../../lib/phone';
 import { telegramService } from '../telegram/telegram.service';
@@ -55,9 +55,9 @@ export async function findClientByPhone(key: string, managerId: string | null): 
 }
 
 /** Открытая задача «перезвонить» этому номеру у менеджера. */
-export function findOpenCallbackTask(managerId: string, phoneKey: string) {
+export function findOpenCallbackTask(managerId: string, phoneKey: string, channel: CallChannel = 'SALES') {
   return prisma.task.findFirst({
-    where: { assigneeId: managerId, status: { in: OPEN_TASK_STATUSES }, callSession: { phoneKey } },
+    where: { assigneeId: managerId, status: { in: OPEN_TASK_STATUSES }, callSession: { phoneKey, channel } },
     orderBy: { createdAt: 'desc' },
     select: { id: true, description: true, callSessionId: true },
   });
@@ -81,10 +81,13 @@ export async function closeCallbacks(
   phoneKey: string,
   at: Date,
   report: string,
+  /** Звонки и задачи только своего потока: разговор HR не закрывает задачи продаж и наоборот */
+  channel: CallChannel = 'SALES',
 ): Promise<{ calls: number; tasks: number }> {
   const calls = await prisma.callSession.updateMany({
     where: {
       ...(managerId ? { managerUserId: managerId } : {}),
+      channel,
       phoneKey,
       mobileType: { in: CALLBACK_TYPES },
       calledBackAt: null,
@@ -96,7 +99,7 @@ export async function closeCallbacks(
     where: {
       ...(managerId ? { assigneeId: managerId } : {}),
       status: { in: OPEN_TASK_STATUSES },
-      callSession: { phoneKey, startedAt: { lte: at } },
+      callSession: { phoneKey, channel, startedAt: { lte: at } },
     },
     data: { status: 'DONE', report },
   });
@@ -113,6 +116,7 @@ async function handleMissed(session: CallSession, managerId: string, phoneKey: s
   const later = await prisma.callSession.findFirst({
     where: {
       phoneKey,
+      channel: session.channel,
       deletedAt: null,
       startedAt: { gt: session.startedAt },
       mobileType: { in: ['in', 'out'] },
@@ -161,15 +165,18 @@ function conversationEnd(c: Pick<CallSession, 'startedAt' | 'endedAt' | 'duratio
 }
 
 export async function linkFollowUps(
-  session: Pick<CallSession, 'id' | 'phoneKey' | 'status' | 'startedAt' | 'direction' | 'endedAt' | 'durationSec'>,
+  session: Pick<CallSession, 'id' | 'phoneKey' | 'status' | 'startedAt' | 'direction' | 'endedAt' | 'durationSec' | 'channel'>,
 ): Promise<void> {
   if (!session.phoneKey) return;
+  // Связываем только внутри своего потока: разговор HR — не «перезвонили» клиенту продаж
+  const channel = session.channel;
   if (session.status === 'COMPLETED') {
     const link = { followUpCallId: session.id, followUpAt: session.startedAt, followUpDirection: session.direction };
     // Несостоявшиеся звонки до разговора — и те, что пришлись на сам разговор (клиент был занят)
     await prisma.callSession.updateMany({
       where: {
         phoneKey: session.phoneKey,
+        channel,
         status: { in: [...FAILED_CALL_STATUSES] },
         startedAt: { lte: new Date(conversationEnd(session).getTime() + BUSY_GRACE_MS) },
         id: { not: session.id },
@@ -185,6 +192,7 @@ export async function linkFollowUps(
     const busy = await prisma.callSession.findFirst({
       where: {
         phoneKey: session.phoneKey,
+        channel,
         status: 'COMPLETED',
         startedAt: { lte: session.startedAt },
         endedAt: { gte: new Date(session.startedAt.getTime() - BUSY_GRACE_MS) },
@@ -194,7 +202,7 @@ export async function linkFollowUps(
       select: { id: true, startedAt: true, direction: true },
     });
     const next = busy ?? await prisma.callSession.findFirst({
-      where: { phoneKey: session.phoneKey, status: 'COMPLETED', startedAt: { gt: session.startedAt }, deletedAt: null },
+      where: { phoneKey: session.phoneKey, channel, status: 'COMPLETED', startedAt: { gt: session.startedAt }, deletedAt: null },
       orderBy: { startedAt: 'asc' },
       select: { id: true, startedAt: true, direction: true },
     });
@@ -207,12 +215,74 @@ export async function linkFollowUps(
   }
 }
 
+/**
+ * Звонок с телефона HR. Клиента не ищем. Пропущенный — задача «перезвонить» и Telegram
+ * только самой HR (владельцу телефона), без РОП. Разговор с номером закрывает её задачи —
+ * только среди задач HR.
+ */
+async function processHrCall(session: CallSession, now: Date): Promise<void> {
+  const ownerId = session.managerUserId;
+  const phoneKey = session.phoneKey ?? '';
+  if (!ownerId || !phoneKey) return;
+  const closeReport = 'Закрыто автоматически: состоялся разговор с этим номером';
+
+  if (isConversation(session.mobileType, session.durationSec)) {
+    await closeCallbacks(null, phoneKey, session.startedAt, closeReport, 'HR');
+    return;
+  }
+  if (!needsCallback(session.mobileType)) return;
+
+  // Уже поговорили с этим номером позже (пачка не по порядку) — перезванивать не нужно
+  const later = await prisma.callSession.findFirst({
+    where: { phoneKey, channel: 'HR', deletedAt: null, startedAt: { gt: session.startedAt }, status: 'COMPLETED' },
+    select: { startedAt: true },
+  });
+  if (later) {
+    await prisma.callSession.update({ where: { id: session.id }, data: { calledBackAt: later.startedAt } });
+    return;
+  }
+  if (now.getTime() - session.startedAt.getTime() > CALLBACK_MAX_AGE_MS) return;
+
+  const label = phoneLabel(session.phone);
+  const time = formatTashkentTime(session.startedAt, now);
+  const open = await findOpenCallbackTask(ownerId, phoneKey, 'HR');
+  if (open) {
+    await prisma.task.update({
+      where: { id: open.id },
+      data: { description: `${open.description ?? ''}\nЕщё пропущенный: ${time}`.trim() },
+    });
+  } else {
+    await prisma.task.create({
+      data: {
+        title: callbackTitle(label),
+        description: `Пропущенный звонок на телефон HR ${time} с номера ${label}.`,
+        assigneeId: ownerId,
+        createdById: ownerId,
+        dueDate: new Date(Math.max(session.startedAt.getTime(), now.getTime() - 2 * HOUR_MS) + 2 * HOUR_MS),
+        callSessionId: session.id,
+      },
+    });
+  }
+  await telegramService.sendToUser(ownerId, {
+    title: open ? 'Снова пропущенный звонок' : 'Пропущенный звонок',
+    body: `${label} — ${time}.\nПерезвоните в течение 2 часов.`,
+    url: `/hr-calls?call=${session.id}`,
+    severity: 'WARNING',
+  });
+}
+
 /** Вызывается для каждого нового мобильного звонка, в порядке времени звонков. */
 export async function processNewMobileCall(session: CallSession, now: Date = new Date()): Promise<void> {
   const managerId = session.managerUserId;
   const phoneKey = session.phoneKey ?? '';
 
   await linkFollowUps(session);
+
+  // Телефон HR: кандидаты и сотрудники — не клиенты; свой поток задач и уведомлений
+  if (session.channel === 'HR') {
+    await processHrCall(session, now);
+    return;
+  }
 
   // Служебный номер (склад, сотрудник): не клиент, задач «перезвонить» по нему не ставим
   if (await isServicePhone(phoneKey)) {

@@ -135,6 +135,10 @@ router.get('/devices/:id/log-url', ...phones, asyncHandler(async (req: Request, 
 
 router.put('/devices/:id', ...phones, asyncHandler(async (req: Request, res: Response) => {
   const dto = parseOr400(updateDeviceDto, req.body);
+  // Назначение (продажи / HR) меняет только администратор: РОП не должен уметь увести звонки из продаж
+  if (dto.channel && req.user!.role !== 'ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
+    throw new AppError(403, 'Назначение телефона меняет администратор');
+  }
   const exists = await prisma.mobileDevice.findUnique({ where: { id: String(req.params.id) }, select: { id: true } });
   if (!exists) throw new AppError(404, 'Устройство не найдено');
   await prisma.mobileDevice.update({
@@ -142,6 +146,8 @@ router.put('/devices/:id', ...phones, asyncHandler(async (req: Request, res: Res
     data: {
       ...(dto.recordingsPathOverride !== undefined ? { recordingsPathOverride: dto.recordingsPathOverride || null } : {}),
       ...(dto.simSlot !== undefined ? { simSlot: dto.simSlot } : {}),
+      // Уже принятые звонки остаются в своём разделе — меняется только поток новых
+      ...(dto.channel ? { channel: dto.channel } : {}),
     },
   });
   res.json({ ok: true });

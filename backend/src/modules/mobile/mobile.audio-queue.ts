@@ -61,6 +61,7 @@ async function processOne(id: string): Promise<void> {
       id: true, recordingPath: true, driveFileId: true, durationSec: true, transcript: true, managerUserId: true, clientId: true,
       analysisRequest: true,
       phoneKey: true,
+      channel: true,
     },
   });
   if (!call || (!call.recordingPath && !call.driveFileId)) return;

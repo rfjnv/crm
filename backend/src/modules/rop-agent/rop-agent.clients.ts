@@ -8,7 +8,8 @@ import {
   SQL_DEALS_REVENUE_BASE_FILTER,
   SQL_EFFECTIVE_REVENUE_ITEM_TS,
 } from '../../lib/analytics';
-import { clientPurchaseCycles } from './rop-agent.analysis';
+import { clientPurchaseCycles } from './rop-agent.analysis';
+
 import { escapeLike } from '../../lib/translit';
 
 /**
@@ -132,7 +133,7 @@ export async function clientCard(input: { client_id?: string; search?: string })
     prisma.$queryRaw<{ at: Date; manager: string | null; direction: string; status: string; talk_sec: number | null }[]>(Prisma.sql`
       SELECT cs.started_at AS at, u.full_name AS manager, cs.direction::text AS direction, cs.status::text AS status, cs.bill_sec AS talk_sec
       FROM call_sessions cs LEFT JOIN users u ON u.id = cs.manager_user_id
-      WHERE cs.client_id = ${id} ORDER BY cs.started_at DESC LIMIT 10`),
+      WHERE cs.client_id = ${id} AND cs.channel = 'SALES' ORDER BY cs.started_at DESC LIMIT 10`),
     prisma.callAudit.findMany({
       where: { clientId: id },
       orderBy: { createdAt: 'desc' },

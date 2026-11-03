@@ -95,6 +95,7 @@ const AiTrainingPage = lazy(() => import('./pages/AiTrainingPage'));
 const AudioTranscriptionPage = lazy(() => import('./pages/AudioTranscriptionPage'));
 const CallAuditDashboardPage = lazy(() => import('./pages/CallAuditDashboardPage'));
 const CallsPage = lazy(() => import('./pages/CallsPage'));
+const HrCallsPage = lazy(() => import('./pages/HrCallsPage'));
 const MobileDevicesPage = lazy(() => import('./pages/MobileDevicesPage'));
 const NoteAuditPage = lazy(() => import('./pages/NoteAuditPage'));
 const NotesBoardPage = lazy(() => import('./pages/NotesBoardPage'));
@@ -254,6 +255,8 @@ export default function App() {
                 <Route path="/profile" element={<ProfilePage />} />
                 {/* Звонки с рабочих телефонов (CallSync): доступ режет сервер — менеджер видит только свои */}
                 <Route path="/calls" element={<CallsPage />} />
+                {/* Звонки HR: сама HR, директор и право view_hr_calls; остальным сервер отвечает 403 */}
+                <Route path="/hr-calls" element={<HrCallsPage />} />
                 {/* Телефоны подключает руководство: админы и РОП (право use_rop_agent) */}
                 <Route element={<PrivateRoute permission="use_rop_agent" />}>
                   <Route path="/mobile-devices" element={<MobileDevicesPage />} />

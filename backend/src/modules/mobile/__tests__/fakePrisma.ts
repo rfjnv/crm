@@ -97,10 +97,10 @@ export function createFakePrisma() {
   }
 
   const defaults: Record<keyof Tables, () => Row> = {
-    callSession: () => ({ followUpCallId: null, followUpAt: null, followUpDirection: null, phoneKey: null, deletedAt: null, analysisRequest: null, driveFileId: null, clientId: null, recordingPath: null, transcript: null, auditId: null, rawEvents: null, audioStatus: 'NONE', audioError: null, audioAttempts: 0, calledBackAt: null }),
+    callSession: () => ({ channel: 'SALES', followUpCallId: null, followUpAt: null, followUpDirection: null, phoneKey: null, deletedAt: null, analysisRequest: null, driveFileId: null, clientId: null, recordingPath: null, transcript: null, auditId: null, rawEvents: null, audioStatus: 'NONE', audioError: null, audioAttempts: 0, calledBackAt: null }),
     task: () => ({ status: 'TODO', description: null, report: null, callSessionId: null }),
-    callRecording: () => ({ callSessionId: null }),
-    mobileDevice: () => ({ active: true }),
+    callRecording: () => ({ channel: 'SALES', callSessionId: null }),
+    mobileDevice: () => ({ channel: 'SALES', active: true }),
     client: () => ({ isArchived: false }),
     callAudit: () => ({ clientId: null }),
     user: () => ({ isActive: true }),
@@ -127,6 +127,15 @@ export function createFakePrisma() {
         return list.map((r) => pick(r, select));
       },
       count: async ({ where }: any = {}) => rows().filter((row) => matches(table, row, where)).length,
+      aggregate: async ({ where, _avg }: any) => {
+        const list = rows().filter((row) => matches(table, row, where));
+        const avg: Row = {};
+        for (const f of Object.keys(_avg ?? {})) {
+          const vals = list.map((r) => r[f]).filter((v) => typeof v === 'number');
+          avg[f] = vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : null;
+        }
+        return { _avg: avg };
+      },
       groupBy: async ({ by, where }: any) => {
         const groups = new Map<string, { key: Row; n: number }>();
         for (const row of rows().filter((r) => matches(table, r, where))) {

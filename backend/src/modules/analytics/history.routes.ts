@@ -2280,7 +2280,7 @@ async function loadCohortClientContacts(clientIds: string[], dealFilter: Prisma.
     LEFT JOIN users nu ON nu.id = n.user_id
     LEFT JOIN LATERAL (
       SELECT x.started_at, x.direction, x.bill_sec, x.manager_user_id FROM call_sessions x
-      WHERE x.client_id = c.id AND x.deleted_at IS NULL
+      WHERE x.client_id = c.id AND x.deleted_at IS NULL AND x.channel = 'SALES'
       ORDER BY x.started_at DESC LIMIT 1
     ) cs ON true
     LEFT JOIN users cu ON cu.id = cs.manager_user_id

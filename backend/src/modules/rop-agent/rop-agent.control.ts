@@ -137,7 +137,7 @@ export async function computePlanProgress(plan: { id: string; title: string; ite
           COALESCE(SUM(x.bill_sec) FILTER (WHERE x.manager_user_id = p.manager_id), 0)::int AS talk_sec,
           COUNT(*) FILTER (WHERE x.manager_user_id IS DISTINCT FROM p.manager_id)::int AS other,
           MAX(x.started_at) FILTER (WHERE x.manager_user_id = p.manager_id) AS last_mine
-        FROM pairs p JOIN call_sessions x ON x.client_id = p.client_id AND x.started_at >= ${since}
+        FROM pairs p JOIN call_sessions x ON x.client_id = p.client_id AND x.started_at >= ${since} AND x.channel = 'SALES'
         GROUP BY p.client_id
       ),
       d AS (

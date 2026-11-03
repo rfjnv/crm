@@ -31,6 +31,7 @@ export async function listDevices(now: Date = new Date()) {
         recordingsDirFound: true,
         recordingsPathOverride: true,
         uploadLogsRequested: true,
+        channel: true,
         lastLogPath: true,
         lastLogAt: true,
         createdAt: true,

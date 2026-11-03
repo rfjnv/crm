@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Button, Card, Checkbox, Form, Input, InputNumber, Modal, Popconfirm, Space, Switch, Table, Tag, Tooltip, Typography, message, theme,
+  Button, Card, Checkbox, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Tooltip, Typography, message, theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ru';
-import { mobileApi, type MobileDeviceRow, type MobileSettings } from '../api/calls.api';
+import { mobileApi, type CallChannel, type MobileDeviceRow, type MobileSettings } from '../api/calls.api';
 import { apiErrorMessage } from '../components/calls/callsUi';
 import DriveArchiveCard from '../components/calls/DriveArchiveCard';
 import ConnectPhoneModal from '../components/calls/ConnectPhoneModal';
@@ -20,6 +20,8 @@ const WEEK_DAYS = [
   { value: 1, label: 'Пн' }, { value: 2, label: 'Вт' }, { value: 3, label: 'Ср' }, { value: 4, label: 'Чт' },
   { value: 5, label: 'Пт' }, { value: 6, label: 'Сб' }, { value: 7, label: 'Вс' },
 ];
+
+const CHANNEL_LABEL: Record<CallChannel, string> = { SALES: 'Продажи', HR: 'HR' };
 
 function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} КБ`;
@@ -70,6 +72,22 @@ export default function MobileDevicesPage() {
     onError,
   });
 
+  const saveChannel = useMutation({
+    mutationFn: ({ id, channel }: { id: string; channel: CallChannel }) => mobileApi.updateDevice(id, { channel }),
+    onSuccess: () => { message.success('Назначение телефона изменено'); refresh(); },
+    onError,
+  });
+  const askChannel = (d: MobileDeviceRow, channel: CallChannel) => {
+    if (channel === d.channel) return;
+    Modal.confirm({
+      title: `Перевести телефон ${d.user.fullName} в «${CHANNEL_LABEL[channel]}»?`,
+      content: 'Смена действует на новые звонки; уже принятые останутся в прежнем разделе.',
+      okText: 'Перевести',
+      cancelText: 'Отмена',
+      onOk: () => saveChannel.mutateAsync({ id: d.id, channel }),
+    });
+  };
+
   const downloadLog = async (id: string) => {
     try {
       const { url } = await mobileApi.logUrl(id);
@@ -99,6 +117,19 @@ export default function MobileDevicesPage() {
           <Typography.Text type="secondary">Android {d.androidVersion ?? '?'} · CallSync {d.appVersion ?? '?'}</Typography.Text>
         </Space>
       ),
+    },
+    {
+      title: 'Назначение',
+      key: 'channel',
+      render: (_, d) => (isAdmin && d.active ? (
+        <Select<CallChannel>
+          size="small"
+          style={{ width: 120 }}
+          value={d.channel}
+          onChange={(v) => askChannel(d, v)}
+          options={[{ value: 'SALES', label: CHANNEL_LABEL.SALES }, { value: 'HR', label: CHANNEL_LABEL.HR }]}
+        />
+      ) : <Tag color={d.channel === 'HR' ? 'purple' : undefined}>{CHANNEL_LABEL[d.channel]}</Tag>),
     },
     {
       title: 'Последняя связь',

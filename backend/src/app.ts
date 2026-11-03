@@ -76,6 +76,7 @@ import callReportsRoutes from './modules/call-reports/call-reports.routes';
 import telephonyRoutes from './modules/telephony/telephony.routes';
 import mobileRoutes from './modules/mobile/mobile.routes';
 import callsRoutes, { clientCallsRouter } from './modules/mobile/calls.routes';
+import hrCallsRoutes from './modules/mobile/hr-calls.routes';
 import mobileInternalRoutes from './modules/mobile/mobile.internal.routes';
 import dbBackupRoutes, { internalBackupRoutes } from './modules/backup/db-backup.routes';
 import './modules/telegram/telegram.customer-bot.service';
@@ -278,6 +279,8 @@ app.use('/api/telephony', telephonyRoutes);
 // Мобильная телефония (приложение CallSync на телефонах менеджеров)
 app.use('/api/mobile', mobileRoutes);
 app.use('/api/calls', callsRoutes);
+// Звонки HR — отдельный поток, не смешивается с продажами
+app.use('/api/hr-calls', hrCallsRoutes);
 
 // Error handling (must be last)
 app.use(errorHandler);
