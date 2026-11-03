@@ -25,6 +25,7 @@ export default function HrMissedCallsWidget() {
       message.success('Отмечено: перезвонила');
       queryClient.invalidateQueries({ queryKey: ['hr-calls-missed'] });
       queryClient.invalidateQueries({ queryKey: ['hr-calls'] });
+      queryClient.invalidateQueries({ queryKey: ['hr-calls-summary'] });
     },
     onError: (err) => message.error(apiErrorMessage(err)),
   });

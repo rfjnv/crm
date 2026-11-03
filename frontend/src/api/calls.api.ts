@@ -329,7 +329,29 @@ export const mobileApi = {
  * «Звонки HR» — отдельный поток телефона HR. Видят сама HR (свои), директор и сотрудники
  * с правом view_hr_calls (все). Запись слушается по ссылке отсюда, а не из /calls.
  */
+export interface HrSummaryCounters {
+  calls: number;
+  conversations: number;
+  incoming: number;
+  outgoing: number;
+  /** С разными номерами */
+  people: number;
+  talkSec: number;
+  /** Исходящие без ответа */
+  notReached: number;
+  missed: number;
+  missedPending: number;
+  firstAt: string | null;
+  lastAt: string | null;
+}
+
+export interface HrSummary extends HrSummaryCounters {
+  /** По сотрудникам — только тем, кто видит все звонки HR */
+  employees: (HrSummaryCounters & { id: string; fullName: string })[] | null;
+}
+
 export const hrCallsApi = {
+  summary: (period: { from?: string; to?: string }) => client.get<HrSummary>('/hr-calls/summary', { params: period }).then((r) => r.data),
   list: (filters: CallsFilters) => client.get<CallsPage>('/hr-calls', { params: filters }).then((r) => r.data),
   missed: () => client.get<MissedSummary>('/hr-calls/missed').then((r) => r.data),
   get: (id: string) => client.get<CallDetail>(`/hr-calls/${id}`).then((r) => r.data),

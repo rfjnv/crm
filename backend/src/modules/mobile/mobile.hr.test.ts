@@ -26,6 +26,7 @@ import { ingestCalls } from './mobile.service';
 import { autoAnalysisSkipReason } from './mobile.auto-analysis';
 import { clientCalls, getAudioUrl, getCall, listCalls } from './calls.service';
 import { callLeaderIds } from './mobile.access';
+import { hrSummary } from './hr-calls.summary';
 import { telegramService } from '../telegram/telegram.service';
 import { NOT_SERVICE } from '../rop-agent/rop-agent.phone-calls';
 import hrCallsRoutes from './hr-calls.routes';
@@ -98,22 +99,22 @@ describe('звонок с телефона HR', () => {
     expect(s).toMatchObject({ channel: 'SALES', clientId: 'c1' });
   });
 
-  it('пропущенный HR — задача и Telegram только самой HR', async () => {
+  it('пропущенный HR — без задачи, только Telegram самой HR', async () => {
     const m = await arrive(hrDevice, { direction: 'missed', duration_sec: 0 });
-    expect(state.fake.db.task).toHaveLength(1);
-    expect(state.fake.db.task[0]).toMatchObject({ assigneeId: 'hr1', createdById: 'hr1', callSessionId: m.id });
+    expect(state.fake.db.task).toHaveLength(0);
     expect(telegramService.sendToUser).toHaveBeenCalledTimes(1);
     expect(telegramService.sendToUser).toHaveBeenCalledWith('hr1', expect.objectContaining({ url: `/hr-calls?call=${m.id}` }));
   });
 
   it('разговор HR закрывает только задачи HR; пропущенный продаж задачу не ставит', async () => {
-    await arrive(hrDevice, { direction: 'missed', duration_sec: 0 });
+    // Задача «перезвонить» поставлена вручную кнопкой
+    state.fake.db.task.push({ id: 'hr-task', title: 'Перезвонить', status: 'TODO', assigneeId: 'hr1', callSessionId: (await arrive(hrDevice, { direction: 'missed', duration_sec: 0 })).id });
     state.fake.db.task.push({ id: 'sales-task', title: 'Перезвонить', status: 'TODO', assigneeId: 'm1', callSessionId: (await arrive(salesDevice, { direction: 'missed', duration_sec: 0 })).id });
     expect(state.fake.db.task).toHaveLength(2);
     await arrive(hrDevice, { direction: 'out', duration_sec: 60 });
     const byId = Object.fromEntries(state.fake.db.task.map((t: any) => [t.id, t.status]));
     expect(byId['sales-task']).toBe('TODO');
-    expect(Object.values(byId).filter((v) => v === 'DONE')).toHaveLength(1);
+    expect(byId['hr-task']).toBe('DONE');
   });
 
   it('алерты по телефону HR — только директору', async () => {
@@ -182,5 +183,35 @@ describe('доступ к звонкам HR', () => {
     expect(await get(hr2)).toBe(200);
     expect(await get(director)).toBe(200);
     expect(await get(viewer)).toBe(200);
+  });
+});
+
+describe('сводка «Звонков HR»', () => {
+  const from = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+
+  it('считает людей, разговоры, минуты, недозвоны и неотработанные пропущенные', async () => {
+    await arrive(hrDevice, { direction: 'in', duration_sec: 60 });
+    await arrive(hrDevice, { direction: 'in', duration_sec: 30 });
+    await arrive(hrDevice, { direction: 'out', duration_sec: 90, phone: '+998935550011' });
+    await arrive(hrDevice, { direction: 'out', duration_sec: 0, phone: '+998935550022' });
+    await arrive(hrDevice, { direction: 'missed', duration_sec: 0, phone: '+998935550033' });
+    await arrive({ ...hrDevice, id: 'dev-hr2', userId: 'hr2' }, { direction: 'in', duration_sec: 45 });
+    await arrive(salesDevice, { direction: 'in', duration_sec: 300 });
+
+    const own = await hrSummary(hr1, { from });
+    expect(own).toMatchObject({
+      calls: 5, conversations: 3, incoming: 2, outgoing: 1, people: 2, talkSec: 180,
+      notReached: 1, missed: 1, missedPending: 1, employees: null,
+    });
+
+    const all = await hrSummary(director, { from });
+    expect(all).toMatchObject({ calls: 6, conversations: 4, people: 2, talkSec: 225 });
+    expect(all.employees?.map((e) => [e.fullName, e.conversations])).toEqual([['Гулнора HR', 3], ['Вторая HR', 1]]);
+  });
+
+  it('эндпоинт /summary закрыт для тех, у кого нет доступа к HR', async () => {
+    const get = (u: object) => fetch(`${base}/api/hr-calls/summary`, { headers: { 'x-test-user': JSON.stringify(u) } }).then((r) => r.status);
+    expect(await get(admin)).toBe(403);
+    expect(await get(hr1)).toBe(200);
   });
 });

@@ -12,6 +12,7 @@ import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatUzPhone } from '../utils/phone';
 import CallAudioPlayer from '../components/calls/CallAudioPlayer';
+import HrCallsSummary from '../components/calls/HrCallsSummary';
 import {
   CALL_TYPE_OPTIONS, CallTypeIcon, FollowUpTag, apiErrorMessage, callTypeLabel, canSeeAllHrCalls, canUseHrCalls, formatDuration, isFailedCall,
 } from '../components/calls/callsUi';
@@ -105,6 +106,8 @@ function HrCallsContent() {
       <Typography.Title level={4} style={{ marginTop: 0, marginBottom: 4 }}>Звонки HR</Typography.Title>
       <Typography.Paragraph type="secondary">Звонки HR не попадают в продажи, KPI и аналитику.</Typography.Paragraph>
 
+      <HrCallsSummary from={filters.from} to={filters.to} seeAll={seeAll} onShowMissed={() => patch({ missedOnly: '1' })} />
+
       <Card size="small" style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <DatePicker.RangePicker
@@ -183,6 +186,7 @@ function HrCallsContent() {
           queryClient.invalidateQueries({ queryKey: ['hr-calls'] });
           queryClient.invalidateQueries({ queryKey: ['hr-call'] });
           queryClient.invalidateQueries({ queryKey: ['hr-calls-missed'] });
+          queryClient.invalidateQueries({ queryKey: ['hr-calls-summary'] });
         }}
       />
     </div>

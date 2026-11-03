@@ -243,29 +243,11 @@ async function processHrCall(session: CallSession, now: Date): Promise<void> {
   }
   if (now.getTime() - session.startedAt.getTime() > CALLBACK_MAX_AGE_MS) return;
 
-  const label = phoneLabel(session.phone);
-  const time = formatTashkentTime(session.startedAt, now);
-  const open = await findOpenCallbackTask(ownerId, phoneKey, 'HR');
-  if (open) {
-    await prisma.task.update({
-      where: { id: open.id },
-      data: { description: `${open.description ?? ''}\nЕщё пропущенный: ${time}`.trim() },
-    });
-  } else {
-    await prisma.task.create({
-      data: {
-        title: callbackTitle(label),
-        description: `Пропущенный звонок на телефон HR ${time} с номера ${label}.`,
-        assigneeId: ownerId,
-        createdById: ownerId,
-        dueDate: new Date(Math.max(session.startedAt.getTime(), now.getTime() - 2 * HOUR_MS) + 2 * HOUR_MS),
-        callSessionId: session.id,
-      },
-    });
-  }
+  // Задачу не ставим — как и в продажах. Пропущенный виден в «Звонках HR» и на главной; HR — сообщение в Telegram.
   await telegramService.sendToUser(ownerId, {
-    title: open ? 'Снова пропущенный звонок' : 'Пропущенный звонок',
-    body: `${label} — ${time}.\nПерезвоните в течение 2 часов.`,
+    title: 'Пропущенный звонок',
+    body: `${phoneLabel(session.phone)} — ${formatTashkentTime(session.startedAt, now)}.
+Перезвоните в течение 2 часов.`,
     url: `/hr-calls?call=${session.id}`,
     severity: 'WARNING',
   });

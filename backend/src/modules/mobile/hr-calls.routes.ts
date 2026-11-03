@@ -15,6 +15,7 @@ import {
   missedToday,
   phoneHistory,
 } from './calls.service';
+import { hrSummary } from './hr-calls.summary';
 
 /**
  * /api/hr-calls — «Звонки HR»: телефон HR (кандидаты, сотрудники). Отдельный поток: в журнал
@@ -37,6 +38,12 @@ router.use(authenticate, requireHrCalls);
 
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
   res.json(await listCalls(req.user!, parseOr400(listCallsQuery, req.query), 'HR'));
+}));
+
+/** Сводка сверху раздела: со сколькими поговорила, минуты, пропущенные. Период — как в фильтре, по умолчанию сегодня */
+router.get('/summary', asyncHandler(async (req: Request, res: Response) => {
+  const q = parseOr400(listCallsQuery, req.query);
+  res.json(await hrSummary(req.user!, { from: q.from, to: q.to }));
 }));
 
 /** Пропущенные за сегодня — виджет на главной у HR */

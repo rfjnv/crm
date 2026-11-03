@@ -13,7 +13,7 @@ import { signedUrl } from './mobile.storage';
 import { publicServerUrl } from './mobile.public-url';
 import { notServiceWhere, onlyServiceWhere, servicePhoneMap, type ServicePhoneInfo } from './mobile.service-phones';
 
-interface CallsUser {
+export interface CallsUser {
   userId: string;
   role: string;
   permissions?: string[];
@@ -120,14 +120,14 @@ function toListItem(row: CallListRow, extras: ListExtras) {
 }
 
 /** Начало суток по Ташкенту для 'YYYY-MM-DD' (или сам момент, если пришло ISO-время). */
-function tashkentDate(value: string, endOfDay = false): Date {
+export function tashkentDate(value: string, endOfDay = false): Date {
   if (value.length > 10) return new Date(value);
   const [y, m, d] = value.split('-').map(Number);
   const start = Date.UTC(y, m - 1, d) - TASHKENT_OFFSET_MS;
   return new Date(endOfDay ? start + 24 * HOUR_MS : start);
 }
 
-const MISSED_WHERE: Prisma.CallSessionWhereInput = {
+export const MISSED_WHERE: Prisma.CallSessionWhereInput = {
   direction: 'INBOUND',
   status: 'MISSED',
   // Asterisk direction не уточняет; у мобильных blocked и voicemail не считаем пропущенными
@@ -147,7 +147,7 @@ export function scopeFor(user: CallsUser, channel: CallChannel = 'SALES'): Prism
 }
 
 /** Видит ли пользователь в разделе звонки всех сотрудников (тогда доступен фильтр по сотруднику). */
-function seesEveryone(user: CallsUser, channel: CallChannel): boolean {
+export function seesEveryone(user: CallsUser, channel: CallChannel): boolean {
   return channel === 'SALES' ? canSeeAllCalls(user) : canSeeAllHrCalls(user);
 }
 
