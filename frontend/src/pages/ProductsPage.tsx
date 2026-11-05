@@ -1,5 +1,5 @@
 import { useCostAccess } from '../hooks/useCostAccess';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message,
@@ -12,7 +12,7 @@ import {
   PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined,
   ApartmentOutlined, UnorderedListOutlined, ThunderboltOutlined,
   FilterOutlined, ClearOutlined, MoreOutlined, EllipsisOutlined, LockOutlined,
-  DownloadOutlined, AppstoreOutlined, CheckCircleOutlined, StopOutlined,
+  DownloadOutlined, AppstoreOutlined, CheckCircleOutlined, StopOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
@@ -42,6 +42,8 @@ const NO_CATEGORY = '__none__';
 
 /** Столбцы, которые по умолчанию не занимают место: их данные — серой строкой под названием */
 const DEFAULT_HIDDEN_COLUMNS = ['sku', 'format', 'category', 'countryOfOrigin', 'unit', 'minStock', 'isActive'];
+/** Временно убраны со страницы целиком: и из таблицы, и из меню столбцов. Цена в карточке редактирования осталась. */
+const DISABLED_COLUMNS = ['installmentPrice'];
 /** С этими столбцами таблица может не влезть — включаем прокрутку вбок и закреплённые края */
 const WIDE_COLUMNS = DEFAULT_HIDDEN_COLUMNS;
 
@@ -68,6 +70,7 @@ function matchesStock(p: Product, filter: string): boolean {
 export default function ProductsPage() {
   const isMobile = useIsMobile();
   const screens = Grid.useBreakpoint();
+  const mainRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
@@ -81,7 +84,6 @@ export default function ProductsPage() {
 
   // Filters
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
-  const [countryFilter, setCountryFilter] = useState<string | undefined>();
   const [unitFilter, setUnitFilter] = useState<string | undefined>();
   const [formatFilter, setFormatFilter] = useState<string | undefined>();
   const [stockFilter, setStockFilter] = useState<string>('all');
@@ -194,7 +196,7 @@ export default function ProductsPage() {
   useEffect(() => {
     setMobilePage(1);
     setSelectedRowKeys([]);
-  }, [debouncedSearch, categoryFilter, countryFilter, unitFilter, formatFilter, stockFilter, activeFilter, priceRange]);
+  }, [debouncedSearch, categoryFilter, unitFilter, formatFilter, stockFilter, activeFilter, priceRange]);
 
   // Price bounds for slider
   const priceBounds = useMemo(() => {
@@ -218,7 +220,6 @@ export default function ProductsPage() {
       if (!showHidden) {
         if (activeFilter === 'active' && !p.isActive) return false;
         if (activeFilter === 'inactive' && p.isActive) return false;
-        if (countryFilter && p.countryOfOrigin !== countryFilter) return false;
         if (unitFilter && p.unit !== unitFilter) return false;
         if (formatFilter && p.format !== formatFilter) return false;
         if (priceRange) {
@@ -228,11 +229,17 @@ export default function ProductsPage() {
       }
       return true;
     });
-  }, [products, debouncedSearch, activeFilter, countryFilter, unitFilter, formatFilter, priceRange, hiddenRowIds, showHidden, palletView]);
+  }, [products, debouncedSearch, activeFilter, unitFilter, formatFilter, priceRange, hiddenRowIds, showHidden, palletView]);
 
   const filtered = useMemo(() => (
     showHidden ? baseFiltered : baseFiltered.filter((p) => inCategory(p, categoryFilter) && matchesStock(p, stockFilter))
   ), [baseFiltered, showHidden, categoryFilter, stockFilter]);
+
+  /** В списке сначала то, что есть, потом мало, потом нет; внутри — порядок складского отчёта. */
+  const displayed = useMemo(() => {
+    const rank = (p: Product) => (Number(p.stock) <= 0 ? 2 : Number(p.stock) < Number(p.minStock) ? 1 : 0);
+    return [...filtered].sort((a, b) => rank(a) - rank(b));
+  }, [filtered]);
 
   const stockCounts = useMemo(() => {
     const rows = baseFiltered.filter((p) => inCategory(p, categoryFilter));
@@ -246,8 +253,8 @@ export default function ProductsPage() {
 
   /** Список категорий слева: сколько товаров и сколько из них кончилось. */
   const categoryRail = useMemo(() => {
+    // Порядок — как идут товары (складской отчёт): Map хранит порядок первого появления
     const byCategory = new Map<string, { count: number; zero: number }>();
-    if (categoryFilter) byCategory.set(categoryFilter, { count: 0, zero: 0 });
     for (const p of baseFiltered) {
       const key = p.category || NO_CATEGORY;
       const row = byCategory.get(key) ?? { count: 0, zero: 0 };
@@ -255,9 +262,11 @@ export default function ProductsPage() {
       if (Number(p.stock) === 0) row.zero += 1;
       byCategory.set(key, row);
     }
+    // Выбранная категория не пропадает из списка, даже если поиск в ней ничего не нашёл
+    if (categoryFilter && !byCategory.has(categoryFilter)) byCategory.set(categoryFilter, { count: 0, zero: 0 });
     return [...byCategory.entries()]
       .map(([key, row]) => ({ key, label: key === NO_CATEGORY ? 'Без категории' : key, ...row }))
-      .sort((a, b) => (a.key === NO_CATEGORY ? 1 : b.key === NO_CATEGORY ? -1 : a.label.localeCompare(b.label, 'ru')));
+      .sort((a, b) => Number(a.key === NO_CATEGORY) - Number(b.key === NO_CATEGORY));
   }, [baseFiltered, categoryFilter, stockFilter]);
 
   const hasPalletProducts = useMemo(() => (products ?? []).some((p) => palletFormatOf(p)), [products]);
@@ -294,8 +303,8 @@ export default function ProductsPage() {
 
   const filteredMobileSlice = useMemo(() => {
     const start = (mobilePage - 1) * mobilePageSize;
-    return filtered.slice(start, start + mobilePageSize);
-  }, [filtered, mobilePage, mobilePageSize]);
+    return displayed.slice(start, start + mobilePageSize);
+  }, [displayed, mobilePage, mobilePageSize]);
 
   // Analytics target: selected rows if any, otherwise all filtered
   const analyticsTarget = useMemo(() => {
@@ -306,17 +315,16 @@ export default function ProductsPage() {
   }, [filtered, selectedRowKeys]);
 
   const categories = [...new Set((products ?? []).map((p) => p.category).filter(Boolean))] as string[];
-  const countries = [...new Set((products ?? []).map((p) => p.countryOfOrigin).filter(Boolean))] as string[];
   const units = [...new Set((products ?? []).map((p) => p.unit).filter(Boolean))] as string[];
   const formats = [...new Set((products ?? []).map((p) => p.format).filter(Boolean))] as string[];
 
   const hasUncategorized = (products ?? []).some((p) => !p.category);
   const hasExtraFilters = !!(unitFilter || formatFilter || priceRange);
   /** На телефоне всё, кроме остатка, живёт в панели «Фильтры» */
-  const panelFiltersCount = [categoryFilter, countryFilter, unitFilter, formatFilter, priceRange].filter(Boolean).length
+  const panelFiltersCount = [categoryFilter, unitFilter, formatFilter, priceRange].filter(Boolean).length
     + (activeFilter !== 'active' ? 1 : 0);
   const showRail = !isMobile && !!screens.xl && listMode === 'table' && !showHidden && categoryRail.length > 0;
-  const activeFiltersCount = [categoryFilter, countryFilter, unitFilter, formatFilter, priceRange].filter(Boolean).length
+  const activeFiltersCount = [categoryFilter, unitFilter, formatFilter, priceRange].filter(Boolean).length
     + (stockFilter !== 'all' ? 1 : 0)
     + (activeFilter !== 'active' ? 1 : 0);
 
@@ -425,7 +433,6 @@ export default function ProductsPage() {
 
   function clearAllFilters() {
     setCategoryFilter(undefined);
-    setCountryFilter(undefined);
     setUnitFilter(undefined);
     setFormatFilter(undefined);
     setStockFilter('all');
@@ -624,7 +631,7 @@ export default function ProductsPage() {
     },
   ];
 
-  const columns = allColumns.filter((c) => !hiddenColumns.includes(c.key));
+  const columns = allColumns.filter((c) => !hiddenColumns.includes(c.key) && !DISABLED_COLUMNS.includes(c.key));
 
   // ── Quick analytics computation ──────────────────────────────────
   const analytics = useMemo(() => {
@@ -680,8 +687,9 @@ export default function ProductsPage() {
     : `Аналитика (${filtered.length} товаров)`;
 
   const searchBox = (
-    <Input.Search
+    <Input
       allowClear
+      prefix={<SearchOutlined />}
       placeholder={isMobile ? 'Поиск…' : 'Поиск по названию, артикулу, формату...'}
       value={searchInput}
       onChange={(e) => setSearchInput(e.target.value)}
@@ -699,16 +707,6 @@ export default function ProductsPage() {
         ...categories.map((c) => ({ label: c, value: c })),
         ...(hasUncategorized ? [{ label: 'Без категории', value: NO_CATEGORY }] : []),
       ]}
-    />
-  );
-  const countrySelect = (
-    <Select
-      allowClear
-      placeholder="Страна"
-      style={{ width: isMobile ? '100%' : 140 }}
-      value={countryFilter}
-      onChange={setCountryFilter}
-      options={countries.map((c) => ({ label: c, value: c }))}
     />
   );
   const activeSelect = (
@@ -819,7 +817,7 @@ export default function ProductsPage() {
                       По умолчанию
                     </Button>
                   </div>
-                  {ALL_COLUMN_KEYS.map(({ key, label }) => (
+                  {ALL_COLUMN_KEYS.filter(({ key }) => !DISABLED_COLUMNS.includes(key)).map(({ key, label }) => (
                     <Checkbox
                       key={key}
                       checked={!hiddenColumns.includes(key)}
@@ -862,7 +860,6 @@ export default function ProductsPage() {
         {!isMobile && (
           <>
             {!showRail && categorySelect}
-            {countrySelect}
             {activeSelect}
             <Button
               icon={<FilterOutlined />}
@@ -907,7 +904,6 @@ export default function ProductsPage() {
               {modeSegmented}
               {palletSegmented}
               {categorySelect}
-              {countrySelect}
               {activeSelect}
             </>
           )}
@@ -1020,7 +1016,7 @@ export default function ProductsPage() {
         </div>
       )}
 
-      <div className={showRail ? 'products-split' : undefined}>
+      <div className={`products-split${showRail ? ' products-split--rail' : ''}`}>
       {showRail && (
         <nav className="products-rail" aria-label="Категории">
           <button
@@ -1047,14 +1043,14 @@ export default function ProductsPage() {
           ))}
         </nav>
       )}
-      <div className="products-main">
+      <div className="products-main" ref={mainRef}>
       {listMode === 'hierarchy' ? (
         <ProductHierarchyPanel
           products={filtered}
           loading={isLoading}
           canManage={canManageProducts}
           searchHint={
-            debouncedSearch || categoryFilter || countryFilter || stockFilter !== 'all' || activeFilter !== 'active'
+            debouncedSearch || categoryFilter || stockFilter !== 'all' || activeFilter !== 'active'
               ? 'Показаны товары по текущим фильтрам и поиску.'
               : undefined
           }
@@ -1108,10 +1104,11 @@ export default function ProductsPage() {
         </div>
       ) : (
         <Table
-          dataSource={filtered}
+          dataSource={displayed}
           columns={columns}
           rowKey="id"
           loading={isLoading}
+          sticky={{ getContainer: () => mainRef.current ?? window }}
           pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
           size="middle"
           bordered={false}

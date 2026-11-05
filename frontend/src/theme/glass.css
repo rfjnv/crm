@@ -262,15 +262,16 @@ html[data-design='modern']:has(.app-shell) .bottom-tab-bar {
     flex: 1;
     min-height: 0;
     margin: 0 !important;
-    padding: 4px 28px 28px;
+    padding: 12px 28px 28px;
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior: contain;
     scrollbar-width: thin;
     scrollbar-color: var(--hdr-sep) transparent;
-    /* Содержимое мягко растворяется у верхнего края, уходя под шапку */
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
-    mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+    /* Содержимое мягко растворяется у верхнего края, уходя под шапку. Затухание не длиннее
+       отступа сверху: иначе и без прокрутки съедает верх первого элемента страницы. */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
   }
 
   /* Сама страница больше не прокручивается — только окно */
@@ -326,7 +327,8 @@ html[data-design='modern']:has(.app-shell) .bottom-tab-bar {
 
   html[data-design='modern']:has(.app-shell) .main-container {
     margin-top: 0;
-    padding-top: 4px;
+    /* Не меньше затухания у верхнего края (14px выше) */
+    padding-top: 14px;
   }
 }
 

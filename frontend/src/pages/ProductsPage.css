@@ -83,24 +83,14 @@
 }
 
 /* Категории слева и таблица */
-.products-split {
-  display: grid;
-  grid-template-columns: 230px minmax(0, 1fr);
-  align-items: start;
-  gap: 16px;
-}
-
 .products-main {
   min-width: 0;
 }
 
 .products-rail {
-  position: sticky;
-  top: 0;
   display: flex;
   flex-direction: column;
   gap: 1px;
-  max-height: calc(100vh - 200px);
   padding: 8px;
   overflow-y: auto;
   border: 1px solid var(--pr-hair);
@@ -111,6 +101,7 @@
 
 .products-rail__item {
   display: flex;
+  flex: none;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
@@ -151,6 +142,66 @@
   text-decoration: none;
   white-space: nowrap;
   color: var(--pr-risk);
+}
+
+/*
+ * Компьютер: страница занимает всю высоту окна, шапка и категории стоят на месте,
+ * прокручиваются по отдельности только таблица и сам список категорий.
+ */
+@media (min-width: 768px) {
+  .products-page {
+    display: flex;
+    flex-direction: column;
+    /* Классика: шапка 56 и поля содержимого по 24 */
+    height: calc(var(--app-vh, 100vh) - 104px);
+    min-height: 0;
+  }
+
+  /* Новый дизайн: у окна уже есть своя высота — растягиваем страницу на неё */
+  html[data-design='modern'] .ant-layout-content:has(.products-page) {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 12px;
+    overflow: hidden;
+  }
+
+  html[data-design='modern'] .ant-layout-content:has(.products-page) > div {
+    flex: 1;
+    min-height: 0;
+  }
+
+  html[data-design='modern'] .products-page {
+    height: 100%;
+  }
+
+  .products-head,
+  .products-filters {
+    flex: none;
+  }
+
+  .products-split {
+    display: grid;
+    flex: 1;
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    min-height: 0;
+  }
+
+  .products-split--rail {
+    grid-template-columns: 230px minmax(0, 1fr);
+  }
+
+  .products-rail {
+    align-self: start;
+    max-height: 100%;
+  }
+
+  .products-main {
+    height: 100%;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
 }
 
 /* Строка товара */
@@ -282,7 +333,7 @@
   }
 
   /* Поле с кнопкой очистки: mobile.css задаёт высоту полю, отступы обёртки её только увеличивали */
-  .products-search .ant-input-affix-wrapper {
+  .products-search.ant-input-affix-wrapper {
     padding-block: 0;
   }
 }
