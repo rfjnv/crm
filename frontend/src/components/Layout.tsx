@@ -92,6 +92,7 @@ import { safeStorage } from '../lib/safeStorage';
 import { Image as ImageIcon, Palette, SignOut, UserCircle } from '@phosphor-icons/react';
 import { conversationsApi } from '../api/conversations.api';
 import { accountingChangesApi } from '../api/accountingChanges.api';
+import { paymentRequestsApi } from '../api/paymentRequests.api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useTableScrollFade } from '../hooks/useTableScrollFade';
 import { useActivityTracking } from '../hooks/useActivityTracking';
@@ -324,6 +325,14 @@ export default function Layout() {
     refetchInterval: 60_000,
   });
 
+  // Заявки на оплату, которые ждут бухгалтера
+  const { data: paymentRequests } = useQuery({
+    queryKey: ['payment-requests-summary'],
+    queryFn: paymentRequestsApi.summary,
+    enabled: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'),
+    refetchInterval: 60_000,
+  });
+
   const totalUnread = unreadCounts
     ? Object.values(unreadCounts).reduce((sum, c) => sum + c, 0)
     : 0;
@@ -437,6 +446,13 @@ export default function Layout() {
         key: '/deals',
         icon: <FundProjectionScreenOutlined />,
         label: <Link to="/deals">{role === 'MANAGER' ? 'Заявки' : 'Сделки'}</Link>,
+      }]
+      : []),
+    ...(hasRole('MANAGER', 'OPERATOR') && !hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT')
+      ? [{
+        key: '/finance/payment-requests',
+        icon: <DollarOutlined />,
+        label: <Link to="/finance/payment-requests">Заявки на оплату</Link>,
       }]
       : []),
     ...((hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'WAREHOUSE', 'WAREHOUSE_MANAGER')
@@ -592,6 +608,16 @@ export default function Layout() {
           key: '/finance/review',
           icon: <AuditOutlined />,
           label: <Link to="/finance/review">На проверке</Link>,
+        },
+        {
+          key: '/finance/payment-requests',
+          icon: <DollarOutlined />,
+          label: (
+            <Link to="/finance/payment-requests">
+              <span>Заявки на оплату</span>
+              {(paymentRequests?.pending ?? 0) > 0 && <Badge count={paymentRequests?.pending} size="small" style={{ marginLeft: 8 }} />}
+            </Link>
+          ),
         },
         {
           key: '/finance/deal-changes',
