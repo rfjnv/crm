@@ -17,6 +17,7 @@ import { auditLog } from '../../lib/logger';
 import { deleteImageFromStorage } from '../../lib/imageStorage';
 import { CreateProductDto, UpdateProductDto, CreateMovementDto, CorrectStockDto, CreateReservationDto, ImportExcelResult, ImportedProduct } from './warehouse.dto';
 import { escapeLike } from '../../lib/translit';
+import { sortByReportOrder } from './productOrder';
 
 export class WarehouseService {
   // ==================== PRODUCTS ====================
@@ -54,7 +55,7 @@ export class WarehouseService {
     });
 
     const reservedMap = await this.getReservedQtyMap(products.map((p) => p.id));
-    return products.map((p) =>
+    return sortByReportOrder(products).map((p) =>
       this.hideCost(this.withAvailability(p, reservedMap.get(p.id) ?? 0), canSeeCost),
     );
   }
