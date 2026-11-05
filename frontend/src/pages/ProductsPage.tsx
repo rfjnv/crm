@@ -4,15 +4,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Modal, Form, Input, InputNumber, Select, Typography, message,
   Tag, Space, DatePicker, theme, Segmented, Card, Pagination,
-  Drawer, Statistic, Row, Col, Slider, Progress, Badge, Switch, Popover, Checkbox,
+  Drawer, Statistic, Row, Col, Slider, Progress, Switch, Popover, Checkbox, Grid,
   Dropdown, Popconfirm, Tooltip,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, BarChartOutlined,
   ApartmentOutlined, UnorderedListOutlined, ThunderboltOutlined,
-  FilterOutlined, ClearOutlined, TableOutlined, MoreOutlined, LockOutlined,
-  DownloadOutlined, AppstoreOutlined,
+  FilterOutlined, ClearOutlined, MoreOutlined, EllipsisOutlined, LockOutlined,
+  DownloadOutlined, AppstoreOutlined, CheckCircleOutlined, StopOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../api/warehouse.api';
@@ -25,21 +25,49 @@ import dayjs from 'dayjs';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
 import ProductHierarchyPanel from '../components/ProductHierarchyPanel';
+import './ProductsPage.css';
 import { PALLET_FORMATS, SHEETS_PER_PALLET, formatPallets, palletFormatOf, sheetsPerPalletOf } from '../lib/pallets';
 
 /** Товары с параллельным остатком в рулонах (ламинация) показываем как «N рул. (кг)»,
  * как в исходном складском учёте — сначала физическое кол-во рулонов, вес в скобках. */
 function formatStockCell(stock: number | string | null | undefined, rollStock?: number | string | null): string {
-  const kgNum = Number(stock) || 0;
-  const kg = Number.isInteger(kgNum) ? kgNum : parseFloat(kgNum.toFixed(3));
-  if (rollStock == null) return String(kg);
-  const rollNum = Number(rollStock) || 0;
-  const rolls = Number.isInteger(rollNum) ? rollNum : parseFloat(rollNum.toFixed(3));
-  return `${rolls} рул. (${kg} кг)`;
+  const qty = (n: number) => n.toLocaleString('ru-RU', { maximumFractionDigits: 3 });
+  const kg = qty(Number(stock) || 0);
+  if (rollStock == null) return kg;
+  return `${qty(Number(rollStock) || 0)} рул. (${kg} кг)`;
+}
+
+/** Значение фильтра категории для товаров без категории */
+const NO_CATEGORY = '__none__';
+
+/** Столбцы, которые по умолчанию не занимают место: их данные — серой строкой под названием */
+const DEFAULT_HIDDEN_COLUMNS = ['sku', 'format', 'category', 'countryOfOrigin', 'unit', 'minStock', 'isActive'];
+/** С этими столбцами таблица может не влезть — включаем прокрутку вбок и закреплённые края */
+const WIDE_COLUMNS = DEFAULT_HIDDEN_COLUMNS;
+
+function pluralRu(n: number, forms: [string, string, string]): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return forms[0];
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return forms[1];
+  return forms[2];
+}
+
+function inCategory(p: Product, filter: string | undefined): boolean {
+  if (!filter) return true;
+  return filter === NO_CATEGORY ? !p.category : p.category === filter;
+}
+
+function matchesStock(p: Product, filter: string): boolean {
+  if (filter === 'zero') return Number(p.stock) === 0;
+  if (filter === 'low') return Number(p.stock) > 0 && Number(p.stock) < Number(p.minStock);
+  if (filter === 'reserved') return Number(p.reservedQty) > 0;
+  return true;
 }
 
 export default function ProductsPage() {
   const isMobile = useIsMobile();
+  const screens = Grid.useBreakpoint();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
@@ -140,9 +168,9 @@ export default function ProductsPage() {
     { key: 'isActive', label: 'Статус' },
   ];
 
-  const STORAGE_KEY = 'products_hidden_columns';
+  const STORAGE_KEY = 'products_hidden_columns_v2';
   const [hiddenColumns, setHiddenColumns] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') ?? DEFAULT_HIDDEN_COLUMNS; } catch { return DEFAULT_HIDDEN_COLUMNS; }
   });
 
   function toggleColumn(key: string) {
@@ -177,7 +205,8 @@ export default function ProductsPage() {
     return [Math.floor(Math.min(...prices)), Math.ceil(Math.max(...prices))] as [number, number];
   }, [products]);
 
-  const filtered = useMemo(() => {
+  /** Все фильтры, кроме категории и остатка: от этого списка считаются счётчики рядом с ними. */
+  const baseFiltered = useMemo(() => {
     return (products ?? []).filter((p) => {
       if (!showHidden && hiddenRowIds.includes(p.id)) return false;
       if (showHidden && !hiddenRowIds.includes(p.id)) return false;
@@ -189,12 +218,9 @@ export default function ProductsPage() {
       if (!showHidden) {
         if (activeFilter === 'active' && !p.isActive) return false;
         if (activeFilter === 'inactive' && p.isActive) return false;
-        if (categoryFilter && p.category !== categoryFilter) return false;
         if (countryFilter && p.countryOfOrigin !== countryFilter) return false;
         if (unitFilter && p.unit !== unitFilter) return false;
         if (formatFilter && p.format !== formatFilter) return false;
-        if (stockFilter === 'zero' && Number(p.stock) !== 0) return false;
-        if (stockFilter === 'low' && !(Number(p.stock) > 0 && Number(p.stock) < Number(p.minStock))) return false;
         if (priceRange) {
           const price = Number(p.salePrice || 0);
           if (price < priceRange[0] || price > priceRange[1]) return false;
@@ -202,7 +228,37 @@ export default function ProductsPage() {
       }
       return true;
     });
-  }, [products, debouncedSearch, activeFilter, categoryFilter, countryFilter, unitFilter, formatFilter, stockFilter, priceRange, hiddenRowIds, showHidden, palletView]);
+  }, [products, debouncedSearch, activeFilter, countryFilter, unitFilter, formatFilter, priceRange, hiddenRowIds, showHidden, palletView]);
+
+  const filtered = useMemo(() => (
+    showHidden ? baseFiltered : baseFiltered.filter((p) => inCategory(p, categoryFilter) && matchesStock(p, stockFilter))
+  ), [baseFiltered, showHidden, categoryFilter, stockFilter]);
+
+  const stockCounts = useMemo(() => {
+    const rows = baseFiltered.filter((p) => inCategory(p, categoryFilter));
+    return {
+      all: rows.length,
+      low: rows.filter((p) => matchesStock(p, 'low')).length,
+      zero: rows.filter((p) => matchesStock(p, 'zero')).length,
+      reserved: rows.filter((p) => matchesStock(p, 'reserved')).length,
+    };
+  }, [baseFiltered, categoryFilter]);
+
+  /** Список категорий слева: сколько товаров и сколько из них кончилось. */
+  const categoryRail = useMemo(() => {
+    const byCategory = new Map<string, { count: number; zero: number }>();
+    if (categoryFilter) byCategory.set(categoryFilter, { count: 0, zero: 0 });
+    for (const p of baseFiltered) {
+      const key = p.category || NO_CATEGORY;
+      const row = byCategory.get(key) ?? { count: 0, zero: 0 };
+      if (matchesStock(p, stockFilter)) row.count += 1;
+      if (Number(p.stock) === 0) row.zero += 1;
+      byCategory.set(key, row);
+    }
+    return [...byCategory.entries()]
+      .map(([key, row]) => ({ key, label: key === NO_CATEGORY ? 'Без категории' : key, ...row }))
+      .sort((a, b) => (a.key === NO_CATEGORY ? 1 : b.key === NO_CATEGORY ? -1 : a.label.localeCompare(b.label, 'ru')));
+  }, [baseFiltered, categoryFilter, stockFilter]);
 
   const hasPalletProducts = useMemo(() => (products ?? []).some((p) => palletFormatOf(p)), [products]);
 
@@ -254,7 +310,12 @@ export default function ProductsPage() {
   const units = [...new Set((products ?? []).map((p) => p.unit).filter(Boolean))] as string[];
   const formats = [...new Set((products ?? []).map((p) => p.format).filter(Boolean))] as string[];
 
+  const hasUncategorized = (products ?? []).some((p) => !p.category);
   const hasExtraFilters = !!(unitFilter || formatFilter || priceRange);
+  /** На телефоне всё, кроме остатка, живёт в панели «Фильтры» */
+  const panelFiltersCount = [categoryFilter, countryFilter, unitFilter, formatFilter, priceRange].filter(Boolean).length
+    + (activeFilter !== 'active' ? 1 : 0);
+  const showRail = !isMobile && !!screens.xl && listMode === 'table' && !showHidden && categoryRail.length > 0;
   const activeFiltersCount = [categoryFilter, countryFilter, unitFilter, formatFilter, priceRange].filter(Boolean).length
     + (stockFilter !== 'all' ? 1 : 0)
     + (activeFilter !== 'active' ? 1 : 0);
@@ -374,19 +435,31 @@ export default function ProductsPage() {
     setSelectedRowKeys([]);
   }
 
+  const wideTable = WIDE_COLUMNS.some((k) => !hiddenColumns.includes(k));
+
   const allColumns = [
     {
       key: 'name',
-      title: 'Название',
+      title: 'Товар',
       dataIndex: 'name',
-      fixed: 'left' as const,
-      width: 240,
-      ellipsis: true,
-      render: (v: string, r: Product) => (
-        <Button type="link" style={{ padding: 0, whiteSpace: 'normal', textAlign: 'left', height: 'auto' }} onClick={() => navigate(`/inventory/products/${r.id}`)}>
-          {v}
-        </Button>
-      ),
+      ...(wideTable ? { fixed: 'left' as const, width: 280 } : {}),
+      render: (v: string, r: Product) => {
+        const sub = [
+          hiddenColumns.includes('sku') ? r.sku : null,
+          hiddenColumns.includes('format') ? r.format : null,
+          hiddenColumns.includes('category') && !categoryFilter ? r.category : null,
+          hiddenColumns.includes('countryOfOrigin') ? r.countryOfOrigin : null,
+        ].filter(Boolean);
+        return (
+          <>
+            <button type="button" className="products-name" onClick={() => navigate(`/inventory/products/${r.id}`)}>
+              {v}
+            </button>
+            {!r.isActive && hiddenColumns.includes('isActive') && <Tag className="products-inactive">Неактивен</Tag>}
+            {sub.length > 0 && <div className="products-sub">{sub.join(' · ')}</div>}
+          </>
+        );
+      },
     },
     { key: 'sku', title: 'Артикул', dataIndex: 'sku', width: 130, render: (v: string) => <Tag>{v}</Tag> },
     { key: 'format', title: 'Формат', dataIndex: 'format', width: 120, render: (v: string | null) => v || '—' },
@@ -395,32 +468,37 @@ export default function ProductsPage() {
     { key: 'unit', title: 'Ед. изм.', dataIndex: 'unit', width: 80 },
     {
       key: 'stock',
-      title: 'Остаток',
+      title: hiddenColumns.includes('minStock') ? 'Остаток / минимум' : 'Остаток',
       dataIndex: 'stock',
-      align: 'right' as const,
-      width: 130,
+      width: 190,
       sorter: (a: Product, b: Product) => Number(a.stock) - Number(b.stock),
       render: (v: number, r: Product) => {
         const stock = Number(v);
-        const min = Number(r.minStock || 10);
-        const color = stock === 0 ? token.colorTextDisabled : stock < min ? token.colorError : token.colorSuccess;
+        const min = Number(r.minStock) || 0;
+        const tone = stock <= 0 ? 'zero' : stock < min ? 'low' : 'ok';
         if (palletView) {
-          const pallets = renderPalletQty(stock, r, color);
+          const pallets = renderPalletQty(stock, r, tone === 'zero' ? token.colorError : tone === 'low' ? token.colorWarning : undefined);
           if (pallets) return pallets;
         }
+        const unit = r.rollStock == null && hiddenColumns.includes('unit') ? ` ${r.unit}` : '';
+        const fill = min > 0 ? Math.min(100, (Math.max(0, stock) / min) * 100) : stock > 0 ? 100 : 0;
         return (
-          <span style={{ fontWeight: 600, color }}>
-            {formatStockCell(stock, r.rollStock)}
-          </span>
+          <div className="products-stock" data-tone={tone}>
+            <span className="products-stock__line">
+              <b>{tone === 'zero' ? 'нет' : `${formatStockCell(stock, r.rollStock)}${unit}`}</b>
+              {hiddenColumns.includes('minStock') && min > 0 && <small> / мин {min.toLocaleString('ru-RU')}</small>}
+            </span>
+            {hiddenColumns.includes('minStock') && <span className="products-stock__bar"><i style={{ width: `${fill}%` }} /></span>}
+          </div>
         );
       },
     },
     {
       key: 'reservedQty',
-      title: 'Забронировано',
+      title: 'В брони',
       dataIndex: 'reservedQty',
       align: 'right' as const,
-      width: 130,
+      width: 110,
       render: (v: number | undefined, r: Product) => {
         const reserved = Number(v) || 0;
         if (reserved <= 0) return <span style={{ color: token.colorTextTertiary }}>—</span>;
@@ -451,7 +529,7 @@ export default function ProductsPage() {
     }] : []),
     {
       key: 'salePrice',
-      title: 'Цена продажи',
+      title: 'Цена',
       dataIndex: 'salePrice',
       align: 'right' as const,
       width: 130,
@@ -460,7 +538,7 @@ export default function ProductsPage() {
     },
     {
       key: 'installmentPrice',
-      title: 'Цена рассрочки',
+      title: 'Рассрочка',
       dataIndex: 'installmentPrice',
       align: 'right' as const,
       width: 130,
@@ -488,8 +566,8 @@ export default function ProductsPage() {
     {
       key: '_actions',
       title: '',
-      fixed: 'right' as const,
-      width: canManageProducts || canReserve ? 56 : 0,
+      ...(wideTable ? { fixed: 'right' as const } : {}),
+      width: canManageProducts || canReserve ? 48 : 0,
       render: (_: unknown, r: Product) => {
         if (!canManageProducts && !canReserve) return null;
         const items: NonNullable<MenuProps['items']> = [];
@@ -497,6 +575,12 @@ export default function ProductsPage() {
           items.push(
             { key: 'analytics', icon: <BarChartOutlined />, label: 'Аналитика', onClick: () => navigate(`/inventory/products/${r.id}`) },
             { key: 'edit', icon: <EditOutlined />, label: 'Редактировать', onClick: () => openEditForm(r) },
+            {
+              key: 'toggle-active',
+              icon: r.isActive ? <StopOutlined /> : <CheckCircleOutlined />,
+              label: r.isActive ? 'Сделать неактивным' : 'Сделать активным',
+              onClick: () => updateMut.mutate({ id: r.id, data: { isActive: !r.isActive } }),
+            },
           );
         }
         if (canReserve) {
@@ -595,163 +679,146 @@ export default function ProductsPage() {
     ? `Аналитика (${selectedRowKeys.length} выбрано)`
     : `Аналитика (${filtered.length} товаров)`;
 
+  const searchBox = (
+    <Input.Search
+      allowClear
+      placeholder={isMobile ? 'Поиск…' : 'Поиск по названию, артикулу, формату...'}
+      value={searchInput}
+      onChange={(e) => setSearchInput(e.target.value)}
+      className="products-search"
+    />
+  );
+  const categorySelect = (
+    <Select
+      allowClear
+      placeholder="Категория"
+      style={{ width: isMobile ? '100%' : 160 }}
+      value={categoryFilter}
+      onChange={setCategoryFilter}
+      options={[
+        ...categories.map((c) => ({ label: c, value: c })),
+        ...(hasUncategorized ? [{ label: 'Без категории', value: NO_CATEGORY }] : []),
+      ]}
+    />
+  );
+  const countrySelect = (
+    <Select
+      allowClear
+      placeholder="Страна"
+      style={{ width: isMobile ? '100%' : 140 }}
+      value={countryFilter}
+      onChange={setCountryFilter}
+      options={countries.map((c) => ({ label: c, value: c }))}
+    />
+  );
+  const activeSelect = (
+    <Select
+      value={activeFilter}
+      onChange={setActiveFilter}
+      style={{ width: isMobile ? '100%' : 150 }}
+      options={[
+        { label: 'Активные', value: 'active' },
+        { label: 'Неактивные', value: 'inactive' },
+        { label: 'Все товары', value: 'all' },
+      ]}
+    />
+  );
+  const stockSegmented = (
+    <Segmented
+      value={stockFilter}
+      onChange={(v) => setStockFilter(v as string)}
+      options={[
+        { label: <>Все <span className="products-count">{stockCounts.all}</span></>, value: 'all' },
+        { label: <>Мало <span className="products-count">{stockCounts.low}</span></>, value: 'low' },
+        { label: <>Нет <span className="products-count">{stockCounts.zero}</span></>, value: 'zero' },
+        ...(stockCounts.reserved > 0 || stockFilter === 'reserved'
+          ? [{ label: <>С бронью <span className="products-count">{stockCounts.reserved}</span></>, value: 'reserved' }]
+          : []),
+      ]}
+    />
+  );
+  const palletSegmented = hasPalletProducts && (
+    <Tooltip title={`Самоклейка в листах — остаток и бронь в палетах. В палете: ${PALLET_FORMATS.map((f) => `${f} — ${SHEETS_PER_PALLET[f].toLocaleString('ru-RU')} л.`).join(', ')}`}>
+      <Segmented
+        value={palletView ? 'pallets' : 'units'}
+        onChange={(v) => setPalletView(v === 'pallets')}
+        options={[
+          { label: 'Единицы', value: 'units' },
+          { label: <><AppstoreOutlined /> Палеты</>, value: 'pallets' },
+        ]}
+        block={isMobile}
+      />
+    </Tooltip>
+  );
+  const modeSegmented = (
+    <Segmented
+      value={listMode}
+      onChange={(v) => setListMode(v as 'table' | 'hierarchy')}
+      options={[
+        { label: isMobile ? 'Список' : <><UnorderedListOutlined /> Список</>, value: 'table' },
+        { label: isMobile ? 'Дерево' : <><ApartmentOutlined /> Иерархия</>, value: 'hierarchy' },
+      ]}
+      block={isMobile}
+    />
+  );
+
   return (
-    <div>
-      {/* Search */}
-      <div style={{ marginBottom: 12 }}>
-        <Input.Search
-          allowClear
-          placeholder="Поиск по названию, артикулу, формату..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          style={{ width: '100%', maxWidth: isMobile ? '100%' : 420 }}
-        />
-      </div>
-
-      {/* Controls row */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: isMobile ? 'column' : 'row',
-          flexWrap: isMobile ? 'nowrap' : 'wrap',
-          alignItems: isMobile ? 'stretch' : 'flex-start',
-          justifyContent: 'space-between',
-          gap: isMobile ? 12 : 16,
-          marginBottom: showExtraFilters ? 8 : 16,
-        }}
-      >
-        <Space direction={isMobile ? 'vertical' : 'horizontal'} size={isMobile ? 8 : 12} style={{ width: isMobile ? '100%' : 'auto' }} wrap>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            Товары
-            {activeFiltersCount > 0 && (
-              <Badge count={activeFiltersCount} size="small" style={{ marginLeft: 8, backgroundColor: token.colorPrimary }} />
-            )}
-          </Typography.Title>
-          <Segmented
-            value={listMode}
-            onChange={(v) => setListMode(v as 'table' | 'hierarchy')}
-            options={[
-              { label: isMobile ? 'Список' : <><UnorderedListOutlined /> Список</>, value: 'table' },
-              { label: isMobile ? 'Дерево' : <><ApartmentOutlined /> Иерархия</>, value: 'hierarchy' },
-            ]}
-          />
-          {hasPalletProducts && (
-            <Tooltip title={`Самоклейка в листах — остаток и бронь в палетах. В палете: ${PALLET_FORMATS.map((f) => `${f} — ${SHEETS_PER_PALLET[f].toLocaleString('ru-RU')} л.`).join(', ')}`}>
-              <Segmented
-                value={palletView ? 'pallets' : 'units'}
-                onChange={(v) => setPalletView(v === 'pallets')}
-                options={[
-                  { label: 'Ед. изм.', value: 'units' },
-                  { label: <><AppstoreOutlined /> Палеты</>, value: 'pallets' },
-                ]}
-                block={isMobile}
-              />
-            </Tooltip>
-          )}
-          <Select
-            allowClear
-            placeholder="Категория"
-            style={{ width: isMobile ? '100%' : 160 }}
-            value={categoryFilter}
-            onChange={setCategoryFilter}
-            options={categories.map((c) => ({ label: c, value: c }))}
-          />
-          <Select
-            allowClear
-            placeholder="Страна"
-            style={{ width: isMobile ? '100%' : 140 }}
-            value={countryFilter}
-            onChange={setCountryFilter}
-            options={countries.map((c) => ({ label: c, value: c }))}
-          />
-          <Segmented
-            value={stockFilter}
-            onChange={(v) => setStockFilter(v as string)}
-            options={[
-              { label: 'Все', value: 'all' },
-              { label: 'Мало', value: 'low' },
-              { label: 'Нет', value: 'zero' },
-            ]}
-            block={isMobile}
-          />
-          <Select
-            value={activeFilter}
-            onChange={setActiveFilter}
-            style={{ width: isMobile ? '100%' : 150 }}
-            options={[
-              { label: 'Активные', value: 'active' },
-              { label: 'Неактивные', value: 'inactive' },
-              { label: 'Все товары', value: 'all' },
-            ]}
-          />
-          <Button
-            icon={<FilterOutlined />}
-            onClick={() => setShowExtraFilters((v) => !v)}
-            type={showExtraFilters || hasExtraFilters ? 'primary' : 'default'}
-            ghost={showExtraFilters || hasExtraFilters}
-          >
-            {isMobile ? 'Ещё' : 'Доп. фильтры'}
-          </Button>
-          {activeFiltersCount > 0 && (
-            <Button icon={<ClearOutlined />} onClick={clearAllFilters} type="text">
-              Сбросить
+    <div className="products-page">
+      {/* Шапка: заголовок, поиск и главные действия — одной строкой */}
+      <div className="products-head">
+        <Typography.Title level={4} style={{ margin: 0 }} className="products-title">
+          Товары
+          <small>{filtered.length} {pluralRu(filtered.length, ['позиция', 'позиции', 'позиций'])}</small>
+        </Typography.Title>
+        {!isMobile && searchBox}
+        {!isMobile && (
+          <>
+            <Button icon={<ThunderboltOutlined />} onClick={() => setAnalyticsOpen(true)}>
+              {selectedRowKeys.length > 0 ? `Аналитика (${selectedRowKeys.length})` : 'Аналитика'}
             </Button>
-          )}
-        </Space>
-
-        <Space wrap style={{ width: isMobile ? '100%' : 'auto' }}>
-          <Button
-            icon={<ThunderboltOutlined />}
-            onClick={() => setAnalyticsOpen(true)}
-            type="default"
-            block={isMobile}
-          >
-            {selectedRowKeys.length > 0 ? `Аналитика (${selectedRowKeys.length})` : 'Аналитика'}
-          </Button>
-          <Button
-            icon={<DownloadOutlined />}
-            onClick={exportStock}
-            loading={exporting}
-            block={isMobile}
-          >
-            {selectedRowKeys.length > 0 ? `Скачать остаток (${selectedRowKeys.length})` : 'Скачать остаток'}
-          </Button>
-          {(hiddenRowIds.length > 0 || showHidden) && (
-            <Button
-              type={showHidden ? 'primary' : 'default'}
-              ghost={showHidden}
-              block={isMobile}
-              onClick={() => { setShowHidden((v) => !v); setSelectedRowKeys([]); }}
-            >
-              {showHidden ? 'Список' : `Скрытые (${hiddenRowIds.length})`}
+            <Button icon={<DownloadOutlined />} onClick={exportStock} loading={exporting}>
+              {selectedRowKeys.length > 0 ? `Скачать (${selectedRowKeys.length})` : 'Скачать'}
             </Button>
-          )}
-          {showHidden && hiddenRowIds.length > 0 && (
-            <Button size="small" danger onClick={clearHiddenRows}>
-              Восстановить все
-            </Button>
-          )}
-          {!isMobile && (
-            <Popover
-              trigger="click"
-              placement="bottomRight"
-              title={
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Столбцы</span>
-                  {hiddenColumns.length > 0 && (
+          </>
+        )}
+        <Popover
+          trigger="click"
+          placement="bottomRight"
+          content={
+            <div className="products-more">
+              {isMobile && (
+                <>
+                  <Button type="text" block icon={<ThunderboltOutlined />} onClick={() => setAnalyticsOpen(true)}>
+                    {selectedRowKeys.length > 0 ? `Аналитика (${selectedRowKeys.length})` : 'Аналитика'}
+                  </Button>
+                  <Button type="text" block icon={<DownloadOutlined />} onClick={exportStock} loading={exporting}>
+                    {selectedRowKeys.length > 0 ? `Скачать остаток (${selectedRowKeys.length})` : 'Скачать остаток'}
+                  </Button>
+                </>
+              )}
+              {(hiddenRowIds.length > 0 || showHidden) && (
+                <Button type="text" block onClick={() => { setShowHidden((v) => !v); setSelectedRowKeys([]); }}>
+                  {showHidden ? 'Вернуться к списку' : `Скрытые (${hiddenRowIds.length})`}
+                </Button>
+              )}
+              {isSuperAdmin && (
+                <Button type="text" block onClick={() => setAuditOpen(true)}>
+                  История аудита
+                </Button>
+              )}
+              {!isMobile && (
+                <div className="products-more__columns">
+                  <div className="products-more__title">
+                    <span>Столбцы</span>
                     <Button
                       type="link"
                       size="small"
                       style={{ padding: 0 }}
-                      onClick={() => { setHiddenColumns([]); localStorage.removeItem(STORAGE_KEY); }}
+                      onClick={() => { setHiddenColumns(DEFAULT_HIDDEN_COLUMNS); localStorage.removeItem(STORAGE_KEY); }}
                     >
-                      Показать все
+                      По умолчанию
                     </Button>
-                  )}
-                </div>
-              }
-              content={
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 160 }}>
+                  </div>
                   {ALL_COLUMN_KEYS.map(({ key, label }) => (
                     <Checkbox
                       key={key}
@@ -762,28 +829,64 @@ export default function ProductsPage() {
                     </Checkbox>
                   ))}
                 </div>
-              }
+              )}
+            </div>
+          }
+        >
+          <Button icon={<EllipsisOutlined />} aria-label="Ещё действия" />
+        </Popover>
+        {canManageProducts && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)} aria-label="Добавить товар">
+            {isMobile ? null : 'Добавить'}
+          </Button>
+        )}
+      </div>
+
+      {isMobile && (
+        <div className="products-search-row">
+          {searchBox}
+          <Button
+            icon={<FilterOutlined />}
+            onClick={() => setShowExtraFilters((v) => !v)}
+            type={showExtraFilters || panelFiltersCount > 0 ? 'primary' : 'default'}
+            ghost={showExtraFilters || panelFiltersCount > 0}
+          >
+            {panelFiltersCount > 0 ? `Фильтры (${panelFiltersCount})` : 'Фильтры'}
+          </Button>
+        </div>
+      )}
+
+      {/* Фильтры */}
+      <div className="products-filters">
+        <div className="products-filters__stock">{stockSegmented}</div>
+        {!isMobile && (
+          <>
+            {!showRail && categorySelect}
+            {countrySelect}
+            {activeSelect}
+            <Button
+              icon={<FilterOutlined />}
+              onClick={() => setShowExtraFilters((v) => !v)}
+              type={showExtraFilters || hasExtraFilters ? 'primary' : 'default'}
+              ghost={showExtraFilters || hasExtraFilters}
             >
-              <Button
-                icon={<TableOutlined />}
-                type={hiddenColumns.length > 0 ? 'primary' : 'default'}
-                ghost={hiddenColumns.length > 0}
-              >
-                Столбцы{hiddenColumns.length > 0 ? ` (−${hiddenColumns.length})` : ''}
+              Ещё фильтры
+            </Button>
+            {activeFiltersCount > 0 && (
+              <Button icon={<ClearOutlined />} onClick={clearAllFilters} type="text">
+                Сбросить
               </Button>
-            </Popover>
-          )}
-          {isSuperAdmin && (
-            <Button onClick={() => setAuditOpen(true)} block={isMobile}>
-              История аудита
-            </Button>
-          )}
-          {canManageProducts && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)} block={isMobile}>
-              Добавить
-            </Button>
-          )}
-        </Space>
+            )}
+            {showHidden && hiddenRowIds.length > 0 && (
+              <Button danger onClick={clearHiddenRows}>
+                Восстановить все
+              </Button>
+            )}
+            <span className="products-filters__spacer" />
+            {palletSegmented}
+            {modeSegmented}
+          </>
+        )}
       </div>
 
       {/* Extra filters row */}
@@ -799,10 +902,19 @@ export default function ProductsPage() {
             borderRadius: token.borderRadius,
           }}
         >
+          {isMobile && (
+            <>
+              {modeSegmented}
+              {palletSegmented}
+              {categorySelect}
+              {countrySelect}
+              {activeSelect}
+            </>
+          )}
           <Select
             allowClear
             placeholder="Ед. измерения"
-            style={{ width: 140 }}
+            style={{ width: isMobile ? '100%' : 140 }}
             value={unitFilter}
             onChange={setUnitFilter}
             options={units.map((u) => ({ label: u, value: u }))}
@@ -810,7 +922,7 @@ export default function ProductsPage() {
           <Select
             allowClear
             placeholder="Формат"
-            style={{ width: 180 }}
+            style={{ width: isMobile ? '100%' : 180 }}
             value={formatFilter}
             onChange={setFormatFilter}
             showSearch
@@ -843,6 +955,11 @@ export default function ProductsPage() {
                 </Typography.Text>
               )}
             </div>
+          )}
+          {isMobile && activeFiltersCount > 0 && (
+            <Button icon={<ClearOutlined />} onClick={clearAllFilters} type="text" block>
+              Сбросить
+            </Button>
           )}
         </div>
       )}
@@ -903,6 +1020,34 @@ export default function ProductsPage() {
         </div>
       )}
 
+      <div className={showRail ? 'products-split' : undefined}>
+      {showRail && (
+        <nav className="products-rail" aria-label="Категории">
+          <button
+            type="button"
+            className={`products-rail__item${!categoryFilter ? ' is-on' : ''}`}
+            onClick={() => setCategoryFilter(undefined)}
+          >
+            <span>Все товары</span>
+            <i>{baseFiltered.filter((p) => matchesStock(p, stockFilter)).length}</i>
+          </button>
+          {categoryRail.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              className={`products-rail__item${categoryFilter === c.key ? ' is-on' : ''}`}
+              onClick={() => setCategoryFilter((cur) => (cur === c.key ? undefined : c.key))}
+            >
+              <span>
+                {c.label}
+                {c.zero > 0 && <u>{c.zero} нет</u>}
+              </span>
+              <i>{c.count}</i>
+            </button>
+          ))}
+        </nav>
+      )}
+      <div className="products-main">
       {listMode === 'hierarchy' ? (
         <ProductHierarchyPanel
           products={filtered}
@@ -921,48 +1066,28 @@ export default function ProductsPage() {
           }}
         />
       ) : isMobile ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="products-list">
           {filteredMobileSlice.map((p) => {
             const stock = Number(p.stock);
-            const min = Number(p.minStock || 10);
-            const stockColor =
-              stock === 0 ? token.colorTextDisabled : stock < min ? token.colorError : token.colorSuccess;
+            const min = Number(p.minStock) || 0;
+            const tone = stock <= 0 ? 'zero' : stock < min ? 'low' : 'ok';
+            const reserved = Number(p.reservedQty) || 0;
             return (
-              <Card
-                key={p.id}
-                size="small"
-                hoverable
-                styles={{ body: { padding: 12 } }}
-                onClick={() => navigate(`/inventory/products/${p.id}`)}
-                style={{ cursor: 'pointer' }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <Typography.Text strong ellipsis style={{ display: 'block' }}>
-                      {p.name}
-                    </Typography.Text>
-                    <Tag style={{ marginTop: 4 }}>{p.sku}</Tag>
-                    {p.category && (
-                      <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                        {p.category}
-                      </Typography.Text>
-                    )}
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <Typography.Text strong style={{ fontSize: 16, color: stockColor }}>
-                      {(palletView && renderPalletQty(stock, p, stockColor)) || formatStockCell(stock, p.rollStock)}
-                    </Typography.Text>
-                    <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
-                      мин {min}
-                    </Typography.Text>
-                    {p.salePrice != null && (
-                      <Typography.Text style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                        {formatPrice(Number(p.salePrice))}
-                      </Typography.Text>
-                    )}
-                  </div>
-                </div>
-              </Card>
+              <button key={p.id} type="button" className="products-row" onClick={() => navigate(`/inventory/products/${p.id}`)}>
+                <span className="products-row__name">{p.name}</span>
+                <span className="products-stock" data-tone={tone}>
+                  {(palletView && renderPalletQty(stock, p)) || (
+                    <b>{tone === 'zero' ? 'нет' : `${formatStockCell(stock, p.rollStock)}${p.rollStock == null ? ` ${p.unit}` : ''}`}</b>
+                  )}
+                </span>
+                <span className="products-sub">
+                  {p.sku}
+                  {reserved > 0 && <em> · в брони {reserved.toLocaleString('ru-RU')}</em>}
+                </span>
+                <span className="products-sub products-row__price">
+                  {p.salePrice != null ? formatPrice(Number(p.salePrice)) : ''}
+                </span>
+              </button>
             );
           })}
           {filtered.length === 0 && !isLoading && (
@@ -990,7 +1115,7 @@ export default function ProductsPage() {
           pagination={{ defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
           size="middle"
           bordered={false}
-          scroll={{ x: 1300 }}
+          scroll={wideTable ? { x: 'max-content' } : undefined}
           rowSelection={{
             selectedRowKeys,
             onChange: setSelectedRowKeys,
@@ -998,6 +1123,8 @@ export default function ProductsPage() {
           }}
         />
       )}
+      </div>
+      </div>
 
       {/* Create Modal */}
       <Modal
