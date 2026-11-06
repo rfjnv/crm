@@ -48,6 +48,14 @@ describe('боковое меню нового дизайна', () => {
     expect(allKeys(menu)).not.toContain('/deals/archived');
   });
 
+  it('«Заявки на оплату» видят те же роли, которым открыта страница', () => {
+    const allowed: UserRole[] = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'MANAGER', 'OPERATOR'];
+    for (const role of allowed) {
+      expect(allKeys(buildModernMenu(access(role)))).toContain('/finance/payment-requests');
+    }
+    expect(allKeys(buildModernMenu(access('WAREHOUSE')))).not.toContain('/finance/payment-requests');
+  });
+
   it('группа, от которой остался один пункт, становится обычным пунктом', () => {
     const menu = buildModernMenu(access('SUPER_ADMIN'), ['/power-of-attorney']);
     const sales = menu.find((s) => s.sourceKey === 'sales');

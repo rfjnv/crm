@@ -223,6 +223,7 @@ function tree(a: MenuAccess): { key: string; title?: string; items: DraftNode[] 
         { key: '/finance/cashbox-v2', to: '/finance/cashbox-v2', text: 'Касса 2.0', icon: CashRegister, show: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'WAREHOUSE_MANAGER', 'OPERATOR') },
         { key: '/finance/cashbox?tab=debtors', to: '/finance/cashbox?tab=debtors', text: 'Долги', icon: Receipt, show: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT') },
         { key: '/finance/review', to: '/finance/review', text: 'На проверке', icon: Scales, show: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT') },
+        { key: '/finance/payment-requests', to: '/finance/payment-requests', text: 'Заявки на оплату', icon: CurrencyCircleDollar, show: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'MANAGER', 'OPERATOR') },
         { key: '/finance/deal-changes', to: '/finance/deal-changes', text: 'Изменения в сделках', icon: ClockCounterClockwise, show: hasRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT') },
         { key: '/finance/expenses', to: '/finance/expenses', text: 'Расходы', icon: Wallet, show: hasPermission('manage_expenses') },
         { key: '/finance/balance', to: '/finance/balance', text: 'Баланс компании', icon: Bank, show: hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER') },
