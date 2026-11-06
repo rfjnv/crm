@@ -15,6 +15,7 @@ import { storeFinanceTelegramLog } from '../telegram/telegram-deal-groups.servic
 import { MAX_PAYMENT_AMOUNT } from '../deals/deals.dto';
 import { resolveUsdPart, type UsdPart } from '../../lib/paymentUsd';
 import { buildSearchVariants } from '../../lib/translit';
+import { recordPaidChanges } from '../accounting-changes/accounting-changes.service';
 
 /**
  * «Касса 2.0» — приём денег за минимум шагов.
@@ -516,6 +517,8 @@ router.post(
       });
     }
 
+    recordPaidChanges(result.created.map((c) => ({ dealId: c.dealId, delta: c.amount })), user);
+
     // Та же строка в финансовый пост Telegram, что и при обычном платеже по сделке.
     if (hasRole(user, 'ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN')) {
       const actor = await prisma.user.findUnique({ where: { id: user.userId }, select: { fullName: true } });
@@ -708,6 +711,11 @@ router.post(
         },
       });
     }
+
+    recordPaidChanges(result.created.flatMap((c) => [
+      { dealId: c.dealId, delta: c.amount },
+      ...c.sources.map((s) => ({ dealId: s.id, delta: -s.amount })),
+    ]), user);
 
     res.status(201).json({
       payments: result.created.map((c) => ({ paymentId: c.paymentId, dealId: c.dealId, title: c.title, amount: c.amount })),

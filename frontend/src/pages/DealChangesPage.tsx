@@ -16,9 +16,9 @@ import { getFirstName } from '../lib/name-utils';
 import { formatUZS } from '../utils/currency';
 
 /**
- * «Изменения в сделках»: сделки на перечисление, которые поменялись после того, как
- * попали к бухгалтеру (скидка, количество, товары). Бухгалтер сверяет свои документы —
- * счёт-фактуру, акт сверки, договор — и отмечает «Проверил».
+ * «Изменения в сделках»: всё, что поменялось по сделкам на перечисление, — способ оплаты,
+ * ИНН, договор, суммы, товары, оплаты, отмена и удаление. Бухгалтер сверяет банк-клиент, 1С
+ * и документы и отмечает «Проверил».
  */
 export default function DealChangesPage() {
   const isMobile = useIsMobile();
@@ -76,7 +76,7 @@ export default function DealChangesPage() {
           </div>
         </>
       ) : (
-        <Typography.Text type="secondary">Сделка удалена</Typography.Text>
+        <Typography.Text type="secondary">Сделка удалена{r.snapshotTitle ? `: ${r.snapshotTitle}` : ''}</Typography.Text>
       )}
     </div>
   );
@@ -126,8 +126,8 @@ export default function DealChangesPage() {
         </Typography.Title>
       </div>
       <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-        Сделки на перечисление, в которых после передачи бухгалтеру поменялись цены, количество, товары, скидка или НДС.
-        Сверьте счёт-фактуру, акт сверки и договор и отметьте «Проверил».
+        Всё, что поменялось по сделкам на перечисление: способ оплаты, ИНН, договор, цены, количество, товары, скидка, НДС, оплаты, отмена и удаление.
+        Сверьте банк-клиент, 1С и документы и отметьте «Проверил».
       </Typography.Text>
 
       <Segmented
@@ -195,7 +195,7 @@ export default function DealChangesPage() {
             </Typography.Paragraph>
             <AccountingChangeLines lines={reviewing.changes} />
             <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 8 }}>
-              Убедитесь, что счёт-фактура, акт сверки и договор совпадают со сделкой.
+              Убедитесь, что банк-клиент, 1С, счёт-фактура, акт сверки и договор совпадают со сделкой.
             </Typography.Paragraph>
             <Input.TextArea
               value={note}

@@ -11,6 +11,7 @@ import { buildClientCreditNote, cashOnlyFilter, isNonCashKind } from '../../lib/
 import { tashkentDayKey, tashkentStartOfToday } from '../../lib/tz';
 import { buildSearchVariants } from '../../lib/translit';
 import { responseCache } from '../../lib/responseCache';
+import { recordPaidChanges } from '../accounting-changes/accounting-changes.service';
 
 function paymentStatusFromAmounts(dealAmount: number, paid: number): PrismaPaymentStatus {
   if (paid <= 0) return 'UNPAID';
@@ -890,6 +891,11 @@ router.post(
       },
     });
 
+    recordPaidChanges([
+      { dealId, delta: result.applyTotal },
+      ...result.usedSources.map((s) => ({ dealId: s.id, delta: -s.amount })),
+    ], user);
+
     res.status(201).json({
       ...result.created,
       // Пул мог быть меньше запрошенного — фронт обязан показать, сколько зачлось на самом деле.
@@ -1005,6 +1011,11 @@ router.post(
       after: { reversedTargetPaid: result.targetNewPaid, restoredSources: result.restored },
       reason,
     });
+
+    recordPaidChanges([
+      { dealId: payment.dealId, delta: -Number(payment.amount) },
+      ...result.restored.map((s) => ({ dealId: s.id, delta: s.amount })),
+    ], user);
 
     res.json({
       success: true,

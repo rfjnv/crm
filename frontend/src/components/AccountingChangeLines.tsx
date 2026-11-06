@@ -21,7 +21,15 @@ const KIND: Record<AccountingChangeLine['kind'], { label: string; color: string 
   amount: { label: 'Сумма', color: 'purple' },
   discount: { label: 'Скидка', color: 'magenta' },
   vat: { label: 'НДС', color: 'gold' },
-  paymentMethod: { label: 'Оплата', color: 'cyan' },
+  paymentMethod: { label: 'Способ оплаты', color: 'red' },
+  paid: { label: 'Оплачено', color: 'green' },
+  inn: { label: 'ИНН', color: 'red' },
+  transferDocs: { label: 'Документы', color: 'geekblue' },
+  contract: { label: 'Договор', color: 'red' },
+  client: { label: 'Клиент', color: 'red' },
+  canceled: { label: 'Отмена', color: 'red' },
+  archived: { label: 'Архив', color: 'red' },
+  deleted: { label: 'Удалена', color: 'red' },
 };
 
 const qty = (v: unknown) => Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 3 });
@@ -41,6 +49,14 @@ function valueText(l: AccountingChangeLine): { before?: string; after?: string }
       before: METHOD_LABELS[String(l.before)] ?? String(l.before ?? '—'),
       after: METHOD_LABELS[String(l.after)] ?? String(l.after ?? '—'),
     };
+    case 'paid': return { before: formatUZS(Number(l.before)), after: formatUZS(Number(l.after)) };
+    case 'inn':
+    case 'client': return { before: String(l.before ?? '—'), after: String(l.after ?? '—') };
+    case 'transferDocs': return { before: String(l.before ?? '—'), after: String(l.after ?? '—') };
+    case 'contract': return { before: l.before ? `№${l.before}` : 'нет', after: l.after ? `№${l.after}` : 'нет' };
+    case 'canceled': return { after: l.after === 'REJECTED' ? 'Сделка отклонена' : 'Сделка отменена' };
+    case 'archived': return { after: l.after ? 'Сделка в архиве' : 'Возвращена из архива' };
+    case 'deleted': return { after: 'Сделка удалена' };
   }
 }
 

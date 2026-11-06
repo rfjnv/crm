@@ -148,7 +148,7 @@ export default function AccountantBlocks({ cardStyle, showCashbox }: { cardStyle
             <>
               <Typography.Paragraph style={{ marginBottom: 12 }}>
                 <Typography.Text strong style={{ color: token.colorWarning }}>{formatCount(open)}</Typography.Text>
-                {' '}{dealsWord(open)} по договору {open % 10 === 1 && open % 100 !== 11 ? 'изменилась' : 'изменились'} — проверьте счёт-фактуру, акт сверки и договор
+                {' '}{dealsWord(open)} на перечисление {open % 10 === 1 && open % 100 !== 11 ? 'изменилась' : 'изменились'} — сверьте банк-клиент, 1С и документы
               </Typography.Paragraph>
               <div style={{ display: 'grid', gap: 10 }}>
                 {(changes?.latest ?? []).map((c) => (

@@ -2,7 +2,9 @@ import client from './client';
 import type { DealStatus } from '../types';
 
 /** Что поменялось в сделке на перечисление — см. backend accounting-changes.service.ts. */
-export type AccountingChangeKind = 'price' | 'qty' | 'added' | 'removed' | 'amount' | 'discount' | 'vat' | 'paymentMethod';
+export type AccountingChangeKind =
+  | 'price' | 'qty' | 'added' | 'removed' | 'amount' | 'discount' | 'vat' | 'paymentMethod'
+  | 'paid' | 'inn' | 'transferDocs' | 'contract' | 'client' | 'canceled' | 'archived' | 'deleted';
 
 export interface AccountingChangeLine {
   kind: AccountingChangeKind;
@@ -16,6 +18,8 @@ export interface AccountingChange {
   id: string;
   dealId: string;
   changes: AccountingChangeLine[];
+  /** Название из снимка: сделку могли удалить насовсем. */
+  snapshotTitle: string | null;
   editCount: number;
   createdAt: string;
   lastChangedAt: string;

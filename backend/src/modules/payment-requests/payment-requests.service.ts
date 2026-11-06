@@ -9,6 +9,7 @@ import { TASHKENT_OFFSET_MS, tashkentDayKey } from '../../lib/tz';
 import { pushService } from '../push/push.service';
 import { telegramService } from '../telegram/telegram.service';
 import { MAX_PAYMENT_AMOUNT } from '../deals/deals.dto';
+import { recordPaidChanges } from '../accounting-changes/accounting-changes.service';
 import { planAllocation, toCents, type AllocationSource, type PlanDeal } from './payment-requests.plan';
 
 /**
@@ -428,6 +429,7 @@ export const paymentRequestsService = {
       entityId: id,
       after: { deals: result.posted.length, amount: money(result.request.amount) },
     });
+    recordPaidChanges(result.posted.map((p) => ({ dealId: p.dealId, delta: p.amount })), user);
     void notifyCreator(
       result.request,
       `Заявка на оплату №${result.request.number} принята`,

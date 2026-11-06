@@ -53,6 +53,8 @@ async function hydrate(rows: ChangeRow[]) {
       id: r.id,
       dealId: r.dealId,
       changes: r.changes,
+      // Сделку могли удалить насовсем — название остаётся только в снимке
+      snapshotTitle: (r.before as { title?: string } | null)?.title ?? null,
       before: r.before,
       after: r.after,
       editCount: r.editCount,
@@ -92,7 +94,7 @@ router.get(
       orderBy: q.status === 'open' ? { lastChangedAt: 'desc' } : { reviewedAt: 'desc' },
       take: q.status === 'open' ? 500 : 200,
     });
-    res.json((await hydrate(rows)).filter((r) => r.deal?.contract));
+    res.json(await hydrate(rows));
   }),
 );
 
@@ -101,18 +103,12 @@ router.get(
   '/summary',
   authorize(...ROLES),
   asyncHandler(async (_req: Request, res: Response) => {
-    // Непроверенных записей немного — фильтр «с договором» дешевле сделать здесь, чем держать связь
-    const rows = await prisma.dealAccountingChange.findMany({
-      where: { reviewedAt: null },
-      orderBy: { lastChangedAt: 'desc' },
-      take: 500,
-    });
-    const withContract = new Set((await prisma.deal.findMany({
-      where: { id: { in: [...new Set(rows.map((r) => r.dealId))] }, contractId: { not: null } },
-      select: { id: true },
-    })).map((d) => d.id));
-    const open = rows.filter((r) => withContract.has(r.dealId));
-    res.json({ open: open.length, latest: await hydrate(open.slice(0, 5)) });
+    const where = { reviewedAt: null, NOT: { changes: { equals: [] } } } satisfies Prisma.DealAccountingChangeWhereInput;
+    const [open, latest] = await Promise.all([
+      prisma.dealAccountingChange.count({ where }),
+      prisma.dealAccountingChange.findMany({ where, orderBy: { lastChangedAt: 'desc' }, take: 5 }),
+    ]);
+    res.json({ open, latest: await hydrate(latest) });
   }),
 );
 
