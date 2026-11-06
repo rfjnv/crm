@@ -54,6 +54,26 @@ export interface PaymentRequestPreview {
   unallocated: number;
 }
 
+export interface RecognizedRow {
+  category: string;
+  format: string | null;
+  qty: number;
+  price: number | null;
+  sum: number | null;
+  uncertain: boolean;
+  product: PaymentRequestProduct | null;
+  candidates: PaymentRequestProduct[];
+}
+
+export interface RecognizedTable {
+  period: { from: string; to: string } | null;
+  periodText: string | null;
+  method: 'TRANSFER' | null;
+  rows: RecognizedRow[];
+  total: number | null;
+  warnings: string[];
+}
+
 export interface CreatePaymentRequestPayload {
   clientId: string;
   from: string;
@@ -69,6 +89,16 @@ export const paymentRequestsApi = {
     client.get<PaymentRequest[]>('/payment-requests', { params: { status } }).then((r) => r.data),
   available: (clientId: string, from: string, to: string) =>
     client.get<AvailableGoods>('/payment-requests/available', { params: { clientId, from, to } }).then((r) => r.data),
+  recognize: (image: Blob) => {
+    const form = new FormData();
+    form.append('image', image, 'table');
+    return client
+      .post<RecognizedTable>('/payment-requests/recognize', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 150_000,
+      })
+      .then((r) => r.data);
+  },
   create: (data: CreatePaymentRequestPayload) =>
     client.post<PaymentRequest>('/payment-requests', data).then((r) => r.data),
   preview: (id: string) =>

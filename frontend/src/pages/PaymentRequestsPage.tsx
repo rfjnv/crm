@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert, Button, Card, DatePicker, Empty, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Skeleton,
-  Space, Table, Tag, Typography, message,
+  Alert, Button, Card, DatePicker, Empty, Image, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Skeleton,
+  Space, Table, Tag, Typography, Upload, message,
 } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { CameraOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import BackButton from '../components/BackButton';
 import { clientsApi } from '../api/clients.api';
@@ -16,6 +16,8 @@ import {
   type PaymentRequest,
   type PaymentRequestProduct,
   type PaymentRequestStatus,
+  type RecognizedRow,
+  type RecognizedTable,
 } from '../api/paymentRequests.api';
 import { useAuthStore } from '../store/authStore';
 import { userHasRole } from '../lib/roles';
@@ -59,12 +61,45 @@ function errorText(err: unknown): string {
   return [d?.error, ...(d?.details ?? [])].filter(Boolean).join(': ') || 'Ошибка';
 }
 
+/** Предел API для одного фото: около 3,75 МБ файла. */
+const MAX_PHOTO_BYTES = 3_700_000;
+const SENDABLE_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+/** Снимок с телефона часто больше предела: уменьшаем в браузере, цифры при этом остаются читаемыми. */
+async function preparePhoto(file: Blob): Promise<Blob> {
+  if (file.size <= MAX_PHOTO_BYTES && SENDABLE_PHOTO_TYPES.includes(file.type)) return file;
+  const bitmap = await createImageBitmap(file);
+  for (const [side, quality] of [[3000, 0.9], [2400, 0.85], [1800, 0.8]] as const) {
+    const scale = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (blob && blob.size <= MAX_PHOTO_BYTES) return blob;
+  }
+  throw new Error('too big');
+}
+
+const rowLabel = (r: RecognizedRow) => [r.category, r.format].filter(Boolean).join(' ');
+
 interface DraftRow {
   product: PaymentRequestProduct;
   boughtQty: number;
   requestedQty: number;
   qty: number | null;
   price: number | null;
+}
+
+/** Кладёт строку с фото в заявку: в уже показанный товар или новой строкой. */
+function applyRecognized(rows: DraftRow[], row: RecognizedRow, product: PaymentRequestProduct) {
+  let target = rows.find((r) => r.product.id === product.id);
+  if (!target) {
+    target = { product, boughtQty: 0, requestedQty: 0, qty: null, price: null };
+    rows.push(target);
+  }
+  target.qty = Number(((target.qty ?? 0) + row.qty).toFixed(3));
+  if (row.price != null) target.price = row.price;
 }
 
 function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -75,6 +110,9 @@ function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void
   const [method, setMethod] = useState('TRANSFER');
   const [note, setNote] = useState('');
   const [rows, setRows] = useState<DraftRow[]>([]);
+  const [recognized, setRecognized] = useState<RecognizedTable | null>(null);
+  const [unmatched, setUnmatched] = useState<RecognizedRow[]>([]);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list, enabled: open });
   const { data: products } = useQuery<Product[]>({ queryKey: ['products'], queryFn: productsApi.list, enabled: open });
@@ -87,16 +125,44 @@ function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void
     enabled: open && !!clientId && !!from && !!to,
   });
 
+  // Строки из сделок периода, поверх них то, что прочитано с фото.
   useEffect(() => {
     if (!available) return;
-    setRows(available.rows.map((r) => ({
+    const next: DraftRow[] = available.rows.map((r) => ({
       product: r.product,
       boughtQty: r.boughtQty,
       requestedQty: r.requestedQty,
       qty: null,
       price: r.price || null,
-    })));
-  }, [available]);
+    }));
+    for (const row of recognized?.rows ?? []) {
+      if (row.product) applyRecognized(next, row, row.product);
+    }
+    // Заполненное с фото наверх: так его проще сверять со снимком.
+    next.sort((x, y) => Number((y.qty ?? 0) > 0) - Number((x.qty ?? 0) > 0));
+    setRows(next);
+  }, [available, recognized]);
+
+  useEffect(() => () => {
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+  }, [photoUrl]);
+
+  const recognizeMut = useMutation({
+    mutationFn: async (file: Blob) => {
+      const photo = await preparePhoto(file);
+      return { table: await paymentRequestsApi.recognize(photo), url: URL.createObjectURL(photo) };
+    },
+    onSuccess: ({ table, url }) => {
+      setPhotoUrl(url);
+      setRecognized(table);
+      setUnmatched(table.rows.filter((r) => !r.product));
+      if (table.period) setPeriod([dayjs(table.period.from), dayjs(table.period.to)]);
+      if (table.method) setMethod(table.method);
+    },
+    onError: (err) => message.error(
+      (err as Error).message === 'too big' ? 'Фото слишком большое, сделайте снимок поменьше' : errorText(err),
+    ),
+  });
 
   const reset = () => {
     setClientId(undefined);
@@ -104,6 +170,9 @@ function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void
     setMethod('TRANSFER');
     setNote('');
     setRows([]);
+    setRecognized(null);
+    setUnmatched([]);
+    setPhotoUrl(null);
   };
   const close = () => { reset(); onClose(); };
 
@@ -221,10 +290,46 @@ function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void
       width={isMobile ? '100%' : 960}
       okText="Отправить бухгалтеру"
       cancelText="Отмена"
-      okButtonProps={{ disabled: chosen.length === 0 || missingPrice, loading: createMut.isPending }}
+      okButtonProps={{ disabled: chosen.length === 0 || missingPrice || unmatched.length > 0, loading: createMut.isPending }}
       onOk={() => createMut.mutate()}
       destroyOnHidden
     >
+      <div
+        onPaste={(e) => {
+          const image = [...e.clipboardData.files].find((f) => f.type.startsWith('image/'));
+          if (image && !recognizeMut.isPending) {
+            e.preventDefault();
+            recognizeMut.mutate(image);
+          }
+        }}
+      >
+      <Space wrap align="center" style={{ marginBottom: 12, width: '100%' }}>
+        <Upload
+          accept="image/*"
+          showUploadList={false}
+          disabled={recognizeMut.isPending}
+          beforeUpload={(file) => { recognizeMut.mutate(file); return false; }}
+        >
+          <Button icon={<CameraOutlined />} loading={recognizeMut.isPending}>
+            {recognizeMut.isPending ? 'Читаю фото…' : 'Заполнить по фото таблицы'}
+          </Button>
+        </Upload>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>или вставьте снимок: Ctrl+V</Typography.Text>
+        {photoUrl && <Image src={photoUrl} alt="Фото таблицы" height={40} style={{ objectFit: 'cover' }} />}
+      </Space>
+      {recognized && (
+        <Alert
+          type={recognized.warnings.length > 0 ? 'warning' : 'info'}
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`С фото прочитано строк: ${recognized.rows.length}${recognized.periodText ? `, период ${recognized.periodText}` : ''}. Сверьте с фото перед отправкой.`}
+          description={recognized.warnings.length > 0 ? (
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {recognized.warnings.map((w) => <li key={w}>{w}</li>)}
+            </ul>
+          ) : undefined}
+        />
+      )}
       <Space wrap style={{ marginBottom: 12, width: '100%' }}>
         <Select
           showSearch
@@ -264,6 +369,40 @@ function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void
               message="За этот период сделок не найдено. Можно добавить товары вручную, но оплата ляжет на другие долги клиента."
             />
           )}
+          {unmatched.map((row, idx) => (
+            <Alert
+              key={`${rowLabel(row)}-${idx}`}
+              type="warning"
+              showIcon
+              style={{ marginBottom: 8 }}
+              message={`С фото: ${rowLabel(row)}, ${qtyText(row.qty)}${row.price != null ? ` × ${formatUZS(row.price)}` : ''}. Какой это товар?`}
+              description={(
+                <Space wrap>
+                  <Select
+                    showSearch
+                    aria-label={`Товар для строки ${rowLabel(row)}`}
+                    placeholder="Выберите товар"
+                    style={{ width: 300, maxWidth: '100%' }}
+                    optionFilterProp="label"
+                    value={null}
+                    options={(row.candidates.length > 0 ? row.candidates : products ?? [])
+                      .map((p) => ({ value: p.id, label: `${p.sku} — ${p.name}` }))}
+                    onChange={(id: string) => {
+                      const p = [...row.candidates, ...(products ?? [])].find((x) => x.id === id);
+                      if (!p) return;
+                      setRows((rs) => {
+                        const next = rs.map((r) => ({ ...r }));
+                        applyRecognized(next, row, { id: p.id, name: p.name, sku: p.sku, unit: p.unit });
+                        return next;
+                      });
+                      setUnmatched((list) => list.filter((r) => r !== row));
+                    }}
+                  />
+                  <Button onClick={() => setUnmatched((list) => list.filter((r) => r !== row))}>Пропустить строку</Button>
+                </Space>
+              )}
+            />
+          ))}
           <Table
             size="small"
             rowKey={(r) => r.product.id}
@@ -313,6 +452,7 @@ function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void
           </Typography.Title>
         </>
       )}
+      </div>
     </Modal>
   );
 }
