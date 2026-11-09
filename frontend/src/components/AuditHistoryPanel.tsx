@@ -3,14 +3,14 @@ import { Timeline, Typography, Tag, Spin, Collapse, Empty, theme } from 'antd';
 import { WarningOutlined } from '@ant-design/icons';
 import { adminApi } from '../api/admin.api';
 import { useIsMobile } from '../hooks/useIsMobile';
-import DealStatusTag from './DealStatusTag';
-import type { AuditLog, DealStatus } from '../types';
+import AuditChanges, { hasAuditChanges, type AuditNames } from './AuditChanges';
+import type { AuditLog } from '../types';
 import dayjs from 'dayjs';
 import { getAuditActionLabel } from '../lib/auditActionLabels';
 import { renderJsonDiff } from '../lib/auditDiff';
 import { getFirstName } from '../lib/name-utils';
 
-export default function AuditHistoryPanel({ dealId }: { dealId: string }) {
+export default function AuditHistoryPanel({ dealId, names }: { dealId: string; names?: AuditNames }) {
   const { token: tk } = theme.useToken();
   const isMobile = useIsMobile();
   const { data: auditLogs, isLoading } = useQuery({
@@ -50,41 +50,24 @@ export default function AuditHistoryPanel({ dealId }: { dealId: string }) {
                 </div>
               )}
 
-              {entry.action === 'STATUS_CHANGE' && entry.before && entry.after && (
-                <div style={{ marginTop: 4 }}>
-                  <DealStatusTag status={entry.before.status as DealStatus} />
-                  {' → '}
-                  <DealStatusTag status={entry.after.status as DealStatus} />
-                </div>
+              {hasAuditChanges(entry.before, entry.after) && (
+                <AuditChanges before={entry.before} after={entry.after} names={names} />
               )}
 
-              {isOverride && (
+              {(entry.before || entry.after) && (
                 <Collapse
                   ghost
                   size="small"
                   style={{ marginTop: 4 }}
                   items={[{
-                    key: 'diff',
-                    label: <Typography.Text type="secondary" style={{ fontSize: 11 }}>Показать before/after</Typography.Text>,
+                    key: 'raw',
+                    label: <Typography.Text type="secondary" style={{ fontSize: 11 }}>Исходные данные (JSON)</Typography.Text>,
                     children: (
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile || !entry.before || !entry.after ? '1fr' : '1fr 1fr', gap: 8 }}>
                         {renderJsonDiff('До', entry.before, tk.colorFillTertiary)}
                         {renderJsonDiff('После', entry.after, tk.colorFillTertiary)}
                       </div>
                     ),
-                  }]}
-                />
-              )}
-
-              {!isOverride && entry.action !== 'STATUS_CHANGE' && entry.after && (
-                <Collapse
-                  ghost
-                  size="small"
-                  style={{ marginTop: 4 }}
-                  items={[{
-                    key: 'details',
-                    label: <Typography.Text type="secondary" style={{ fontSize: 11 }}>Детали</Typography.Text>,
-                    children: renderJsonDiff('Данные', entry.after, tk.colorFillTertiary),
                   }]}
                 />
               )}

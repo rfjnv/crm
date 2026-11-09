@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -26,6 +26,7 @@ import DealPipeline from '../components/DealPipeline';
 import SuperOverridePanel from '../components/SuperOverridePanel';
 import WarehouseOverridePanel from '../components/WarehouseOverridePanel';
 import AuditHistoryPanel from '../components/AuditHistoryPanel';
+import AuditChanges, { hasAuditChanges, type AuditNames } from '../components/AuditChanges';
 import BackButton from '../components/BackButton';
 import { userHasRole } from '../lib/roles';
 import DealDeliveryLocationSelect from '../components/DealDeliveryLocationSelect';
@@ -188,6 +189,17 @@ export default function DealDetailPage() {
     queryFn: () => dealsApi.getHistory(id!),
     enabled: !!id,
   });
+
+  /** Названия товаров и сотрудников для разбора истории — вместо голых id. */
+  const auditNames = useMemo<AuditNames>(() => {
+    const productNames = new Map<string, string>();
+    (products ?? []).forEach((p) => productNames.set(p.id, p.name));
+    (dealData?.items ?? []).forEach((i) => { if (i.product?.name) productNames.set(i.productId, i.product.name); });
+    const userNames = new Map<string, string>();
+    (users ?? []).forEach((u) => userNames.set(u.id, u.fullName));
+    if (dealData?.manager) userNames.set(dealData.manager.id, dealData.manager.fullName);
+    return { products: productNames, users: userNames };
+  }, [products, users, dealData]);
 
   const { data: dealPayments } = useQuery({
     queryKey: ['deal-payments', id],
@@ -1609,11 +1621,8 @@ export default function DealDetailPage() {
                                   </Typography.Text>
                                 </div>
                               )}
-                              {entry.action === 'STATUS_CHANGE' && entry.before && entry.after && (
-                                <div style={{ marginTop: 4 }}>
-                                  <DealStatusTag status={entry.before.status as DealStatus} />{' → '}
-                                  <DealStatusTag status={entry.after.status as DealStatus} />
-                                </div>
+                              {hasAuditChanges(entry.before, entry.after) && (
+                                <AuditChanges before={entry.before} after={entry.after} names={auditNames} fontSize={11} />
                               )}
                             </div>
                           ),
@@ -1637,7 +1646,7 @@ export default function DealDetailPage() {
               ...(isSuperAdmin ? [{
                 key: 'audit',
                 label: 'Аудит (SA)',
-                children: <AuditHistoryPanel dealId={id!} />,
+                children: <AuditHistoryPanel dealId={id!} names={auditNames} />,
               }] : []),
             ]}
           />
@@ -2005,18 +2014,21 @@ export default function DealDetailPage() {
                   <Timeline
                     items={(history ?? []).map((entry: DealHistoryEntry) => {
                       if (entry.kind === 'audit') {
+                        const cfg = getAuditActionLabel(entry.action);
+                        const isOverride = entry.action === 'OVERRIDE_UPDATE' || entry.action === 'OVERRIDE_DELETE';
                         return {
-                          color: entry.action === 'STATUS_CHANGE' ? 'blue' : entry.action === 'CREATE' ? 'green' : 'gray',
+                          color: cfg.color,
+                          dot: isOverride ? <WarningOutlined style={{ color: '#ff4d4f' }} /> : undefined,
                           children: (
                             <div>
                               <Typography.Text strong>{getFirstName(entry.user?.fullName)}</Typography.Text>{' '}
-                              <Tag>{entry.action}</Tag>{' '}
+                              <Tag color={cfg.color}>{cfg.label}</Tag>{' '}
                               <Typography.Text type="secondary">{dayjs(entry.createdAt).format('DD.MM.YYYY HH:mm')}</Typography.Text>
-                              {entry.action === 'STATUS_CHANGE' && entry.before && entry.after && (
-                                <div style={{ marginTop: 4 }}>
-                                  <DealStatusTag status={entry.before.status as DealStatus} />{' → '}
-                                  <DealStatusTag status={entry.after.status as DealStatus} />
-                                </div>
+                              {isOverride && entry.reason && (
+                                <div><Typography.Text type="danger" style={{ fontSize: 12 }}>Причина: {entry.reason}</Typography.Text></div>
+                              )}
+                              {hasAuditChanges(entry.before, entry.after) && (
+                                <AuditChanges before={entry.before} after={entry.after} names={auditNames} />
                               )}
                             </div>
                           ),
@@ -2045,7 +2057,7 @@ export default function DealDetailPage() {
               label: <><AuditOutlined /> Аудит (SA)</>,
               children: (
                 <Card bordered={false}>
-                  <AuditHistoryPanel dealId={id!} />
+                  <AuditHistoryPanel dealId={id!} names={auditNames} />
                 </Card>
               ),
             }] : []),
