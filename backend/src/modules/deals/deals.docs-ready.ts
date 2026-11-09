@@ -2,12 +2,12 @@ import prisma from '../../lib/prisma';
 import { AppError } from '../../lib/errors';
 import { auditLog } from '../../lib/logger';
 import type { AuthUser } from '../../lib/scope';
-import { syncDealTelegramGroupMessages } from '../telegram/telegram-deal-groups.service';
+import { releaseDealAfterDocs, syncDealTelegramGroupMessages } from '../telegram/telegram-deal-groups.service';
 
 /**
  * Сделка на перечисление: бухгалтер отмечает, что документы (счёт-фактура и т.п.) готовы.
- * Сделка уходит в группы сразу после создания, и без отметки никто в чатах не знал,
- * есть по ней документы или нет. Отметка показывается в постах групп; её можно снять.
+ * До отметки сделка не попадает в группы производства и отгрузки; после — уходит туда.
+ * Отметку можно снять: тогда посты в этих группах снимаются снова.
  */
 export async function setDealDocsReady(dealId: string, ready: boolean, user: AuthUser) {
   const deal = await prisma.deal.findUnique({
@@ -50,7 +50,7 @@ export async function setDealDocsReady(dealId: string, ready: boolean, user: Aut
     }).catch((err) => console.error('[deals] docs-ready notify:', err));
   }
 
-  void syncDealTelegramGroupMessages(dealId).catch((err) => {
+  void (ready ? releaseDealAfterDocs(dealId) : syncDealTelegramGroupMessages(dealId)).catch((err) => {
     console.error('[Telegram deal groups] docs-ready sync:', err);
   });
 

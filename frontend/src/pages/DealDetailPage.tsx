@@ -60,6 +60,8 @@ const paymentMethodLabels: Record<string, string> = {
 
 const CONTRACT_REQUIRED_METHODS: PaymentMethod[] = ['TRANSFER', 'INSTALLMENT'];
 const DEFAULT_TRANSFER_DOCUMENTS = ['Договор'];
+/** С этого момента сделка на перечисление ждёт документов, прежде чем попасть в группу производства. */
+const HOLD_FOR_DOCS_SINCE = dayjs('2026-11-09T06:30:00.000Z');
 
 function getDefaultContractEndDate(start?: dayjs.Dayjs) {
   return dayjs(start ?? dayjs()).endOf('year');
@@ -680,6 +682,11 @@ export default function DealDetailPage() {
         {deal.docsReadyAt
           ? <Tag color="green">Готовы · {dayjs(deal.docsReadyAt).format('DD.MM.YYYY')}</Tag>
           : <Tag color="gold">Ещё не готовы</Tag>}
+        {!deal.docsReadyAt && dayjs(deal.createdAt).isAfter(HOLD_FOR_DOCS_SINCE) && (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            В группу производства уйдёт после отметки бухгалтерии
+          </Typography.Text>
+        )}
         {(isAdmin || actsAsAccountant) && (
           <Button
             size="small"
