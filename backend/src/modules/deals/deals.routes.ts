@@ -13,6 +13,8 @@ import {
   warehouseOverrideDealDto, warehouseDeletePaymentDto,
 } from './deals.dto';
 import { DEAL_ID_IN_PATH, trackDealAccountingChanges } from '../accounting-changes/accounting-changes.service';
+import { setDealDocsReady } from './deals.docs-ready';
+import type { AuthUser } from '../../lib/scope';
 
 const router = Router();
 
@@ -116,6 +118,12 @@ router.post('/:id/assign-driver', authorize('WAREHOUSE_MANAGER', 'ADMIN', 'SUPER
 router.post('/:id/deliver', authorize('DRIVER', 'WAREHOUSE_MANAGER', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(dealsController.deliverDeal.bind(dealsController)));
 
 // Manual: send deal info to a specific Telegram group
+// Перечисление: бухгалтер отмечает «документы готовы» (или снимает отметку) — видно в постах групп.
+router.post('/:id/docs-ready', authorize('ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'), asyncHandler(async (req, res) => {
+  const ready = req.body?.ready !== false;
+  res.json(await setDealDocsReady(req.params.id as string, ready, req.user as unknown as AuthUser));
+}));
+
 router.post('/:id/send-to-group', authorize('ADMIN', 'SUPER_ADMIN', 'MANAGER'), asyncHandler(dealsController.sendToGroup.bind(dealsController)));
 
 export default router;

@@ -698,6 +698,9 @@ model Deal {
   transferInn   String?       @map("transfer_inn")
   transferDocuments String?   @map("transfer_documents")
   transferType  String?       @map("transfer_type")
+  /// Перечисление: бухгалтер сделал документы (видно в постах групп).
+  docsReadyAt   DateTime?     @map("docs_ready_at")
+  docsReadyById String?       @map("docs_ready_by_id")
   isArchived    Boolean       @default(false) @map("is_archived")
   archivedAt    DateTime?     @map("archived_at")
   archivedById  String?       @map("archived_by_id")

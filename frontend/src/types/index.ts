@@ -535,6 +535,8 @@ export interface Deal {
   transferInn?: string | null;
   transferDocuments?: string[] | null;
   transferType?: 'ONE_TIME' | 'ANNUAL' | null;
+  /** Перечисление: бухгалтер сделал документы. */
+  docsReadyAt?: string | null;
   deliveryType?: DeliveryType | null;
   vehicleNumber?: string | null;
   vehicleType?: string | null;

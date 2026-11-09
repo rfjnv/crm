@@ -316,6 +316,17 @@ export default function DealDetailPage() {
     onSuccess: (_data, isReceiptPunched) => { message.success(isReceiptPunched ? 'Отмечено: чек пробит' : 'Отметка снята'); },
   });
 
+  const docsReadyMut = useMutation({
+    mutationFn: (ready: boolean) => dealsApi.docsReady(id!, ready),
+    onSuccess: (_data, ready) => {
+      message.success(ready ? 'Отмечено: документы готовы — видно в группах' : 'Отметка о документах снята');
+      invalidate();
+    },
+    onError: (err: unknown) => {
+      message.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Не удалось сохранить отметку');
+    },
+  });
+
   const commentMut = useMutation({
     mutationFn: (text: string) => dealsApi.addComment(id!, text),
     onSuccess: () => { invalidate(); setComment(''); message.success('Комментарий добавлен'); },
@@ -661,6 +672,27 @@ export default function DealDetailPage() {
     || role === 'MANAGER'
   );
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
+  // Перечисление: готовы ли документы от бухгалтерии. Сделка уходит в группы сразу,
+  // поэтому отметку видно и там. Ставит бухгалтер (или админ).
+  const docsReadyItem = deal.paymentMethod === 'TRANSFER' ? (
+    <Descriptions.Item label="Документы бухгалтерии">
+      <Space wrap>
+        {deal.docsReadyAt
+          ? <Tag color="green">Готовы · {dayjs(deal.docsReadyAt).format('DD.MM.YYYY')}</Tag>
+          : <Tag color="gold">Ещё не готовы</Tag>}
+        {(isAdmin || actsAsAccountant) && (
+          <Button
+            size="small"
+            type="link"
+            loading={docsReadyMut.isPending}
+            onClick={() => docsReadyMut.mutate(!deal.docsReadyAt)}
+          >
+            {deal.docsReadyAt ? 'Снять отметку' : 'Отметить: документы готовы'}
+          </Button>
+        )}
+      </Space>
+    </Descriptions.Item>
+  ) : null;
   // Заявка на оплату части товаров — для любой не отменённой и не оплаченной сделки, в т.ч. не закрытой.
   const paymentRequestButton = deal.paymentStatus !== 'PAID' && !['CANCELED', 'REJECTED'].includes(deal.status) && !deal.isArchived
     && userHasRole(user, 'SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'MANAGER', 'OPERATOR') ? (
@@ -1258,6 +1290,7 @@ export default function DealDetailPage() {
                   )}
                 </>
               )}
+              {docsReadyItem}
               <Descriptions.Item label="Статус">
                 <DealStatusTag status={deal.status} />
               </Descriptions.Item>
@@ -1724,6 +1757,7 @@ export default function DealDetailPage() {
                           </Space>
                         </Descriptions.Item>
                       )}
+                      {docsReadyItem}
                       <Descriptions.Item label="Статус">
                         <DealStatusTag status={deal.status} />
                       </Descriptions.Item>

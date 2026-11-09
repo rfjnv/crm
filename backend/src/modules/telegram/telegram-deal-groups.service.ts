@@ -464,7 +464,27 @@ type DealRowForProductionTg = {
   status?: DealStatus;
   sentToFinance?: boolean;
   contract?: { contractNumber: string; contractType: string } | null;
+  /** Перечисление: какие документы нужны и сделала ли их бухгалтерия. */
+  transferDocuments?: string | null;
+  docsReadyAt?: Date | null;
 };
+
+/**
+ * Перечисление: готовы ли документы от бухгалтерии. Сделка попадает в группы сразу после
+ * создания, и без этой строки в чате никто не знал, есть ли по ней документы.
+ */
+export function transferDocsLine(deal: {
+  paymentMethod: PaymentMethod | null;
+  transferDocuments?: string | null;
+  docsReadyAt?: Date | null;
+}): string | null {
+  if (deal.paymentMethod !== 'TRANSFER') return null;
+  if (deal.docsReadyAt) return '📄 <b>Документы (перечисление):</b> ✅ готовы';
+  const docs = parseTransferDocumentsJson(deal.transferDocuments);
+  return docs.length
+    ? `📄 <b>Документы (перечисление):</b> ❗ ещё не готовы — нужны: ${esc(docs.join(', '))}`
+    : '📄 <b>Документы (перечисление):</b> ❗ ещё не готовы';
+}
 
 /** Согласовано с deals.service: перечисление / рассрочка — очередь в финансы. */
 const FINANCE_REVIEW_PAYMENT_METHODS: ReadonlyArray<PaymentMethod> = ['TRANSFER', 'INSTALLMENT'];
@@ -523,10 +543,13 @@ export function buildProductionGroupHtml(
 
   const rfsExtra = buildReadyForShipmentExtraLines(deal);
   const debtLine = debtIndicatorLine(deal.paymentType, deal.paymentStatus, deal.dueDate);
+  const docsLine = transferDocsLine(deal);
 
   return [
     headerLine,
-    ...(debtLine ? ['', debtLine] : []),
+    ...(debtLine || docsLine ? [''] : []),
+    ...(debtLine ? [debtLine] : []),
+    ...(docsLine ? [docsLine] : []),
     '',
     `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
     `Менеджер: <b>${esc(getFirstName(deal.manager.fullName))}</b>`,
@@ -645,6 +668,8 @@ async function migrateProductionMessageToRfsIfNeeded(dealId: string): Promise<vo
     contract: full.contract
       ? { contractNumber: full.contract.contractNumber, contractType: full.contract.contractType }
       : null,
+    transferDocuments: full.transferDocuments,
+    docsReadyAt: full.docsReadyAt,
   };
   const body = buildProductionGroupHtml(fullProd, hdr.header, hdr.paymentMethodPending);
   const path = dealLinkPath(dealId);
@@ -941,6 +966,7 @@ type DealForFinanceTg = {
   deliveryComment?: string | null;
   transferType: string | null;
   transferInn: string | null;
+  docsReadyAt?: Date | null;
   client: { companyName: string; contactName: string | null; inn: string | null };
   manager: { fullName: string };
   contract: { contractNumber: string; contractType: string } | null;
@@ -959,8 +985,10 @@ export function buildFinanceQueueTelegramHtml(deal: DealForFinanceTg, legalName?
     : '';
   const commentsBlock = buildDealCommentsBlock(deal.comments);
 
+  const docsLine = transferDocsLine(deal);
   return [
     '💰 <b>Финансы — сделка на проверку</b>',
+    ...(docsLine ? [docsLine] : []),
     '',
     `Клиент: <b>${esc(clientDisplayName(deal.client.companyName, deal.client.contactName))}</b>`,
     `Менеджер: <b>${esc(getFirstName(deal.manager.fullName))}</b>`,
@@ -1284,6 +1312,8 @@ function buildProductionBoardHtmlFromDeal(deal: DealForTelegramSync, footnote?: 
     contract: deal.contract
       ? { contractNumber: deal.contract.contractNumber, contractType: deal.contract.contractType }
       : null,
+    transferDocuments: deal.transferDocuments,
+    docsReadyAt: deal.docsReadyAt,
   };
   return appendSyncFootnote(
     buildProductionGroupHtml(fullProd, hdr.header, hdr.paymentMethodPending),
