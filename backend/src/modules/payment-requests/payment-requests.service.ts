@@ -367,11 +367,17 @@ export const paymentRequestsService = {
   async dealOptions(clientId: string, user: AuthUser) {
     const deals = await prisma.deal.findMany({
       where: { clientId, ...LIVE_DEAL_WHERE, ...ownerScope(user) },
-      select: { id: true, title: true, status: true, amount: true, paidAmount: true, createdAt: true },
+      select: {
+        id: true, title: true, status: true, amount: true, paidAmount: true, paymentStatus: true, createdAt: true,
+      },
       orderBy: { createdAt: 'desc' },
       take: 300,
     });
     return deals
+      // Не закрытая сделка без количества (ждёт склада) имеет сумму 0 — её тоже показываем,
+      // иначе менеджер не понимает, куда она делась. Скрываем только оплаченные.
+      .filter((d) => d.paymentStatus !== 'PAID' && money(d.amount) - money(d.paidAmount) >= 0)
+      .filter((d) => money(d.amount) > money(d.paidAmount) || money(d.amount) === 0)
       .map((d) => ({
         id: d.id,
         title: d.title,
@@ -380,7 +386,6 @@ export const paymentRequestsService = {
         amount: money(d.amount),
         debt: Math.max(0, money(d.amount) - money(d.paidAmount)),
       }))
-      .filter((d) => d.debt > 0)
       .slice(0, 100);
   },
 
@@ -429,7 +434,7 @@ export const paymentRequestsService = {
         pendingAmount: money(pending._sum.amount),
       },
       lines: deal.items
-        .filter((i) => money(i.requestedQty) > 0 && money(i.price) > 0)
+        // Позиции без количества или цены тоже показываем: оплатить их пока нельзя, но видно почему.
         .map((i) => ({
           dealItemId: i.id,
           product: i.product,

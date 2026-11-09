@@ -499,7 +499,7 @@ function DealRequestModal({ initialDealId, onClose }: { initialDealId?: string; 
     setLines(goods.lines.map((l) => ({ ...l, pay: null })));
   }, [goods]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const free = (l: DealDraftLine) => Math.max(0, Number((l.qty - l.requestedQty).toFixed(3)));
+  const free = (l: DealDraftLine) => (l.price > 0 ? Math.max(0, Number((l.qty - l.requestedQty).toFixed(3))) : 0);
   const chosen = lines.filter((l) => (l.pay ?? 0) > 0);
   const total = Math.round(chosen.reduce((sum, l) => sum + (l.pay ?? 0) * l.price, 0) * 100) / 100;
   const debt = goods?.deal.debt ?? 0;
@@ -565,7 +565,9 @@ function DealRequestModal({ initialDealId, onClose }: { initialDealId?: string; 
               min={0}
               max={left}
               disabled={left <= 0}
-              placeholder={left > 0 ? `до ${qtyText(left)}` : 'всё в заявках'}
+              placeholder={
+                l.qty <= 0 ? 'нет кол-ва' : l.price <= 0 ? 'нет цены' : left > 0 ? `до ${qtyText(left)}` : 'всё в заявках'
+              }
               value={l.pay}
               status={(l.pay ?? 0) > left ? 'error' : undefined}
               style={{ width: '100%' }}
@@ -631,7 +633,7 @@ function DealRequestModal({ initialDealId, onClose }: { initialDealId?: string; 
               : []),
             ...(deals ?? []).map((d) => ({
               value: d.id,
-              label: `${d.title} · ${ruDate(d.date)} · долг ${formatUZS(d.debt)}`,
+              label: `${d.title} · ${ruDate(d.date)} · ${d.amount > 0 ? `долг ${formatUZS(d.debt)}` : 'сумма ещё не установлена'}`,
             })),
           ]}
           onChange={(id: string) => setDealId(id)}
@@ -654,6 +656,14 @@ function DealRequestModal({ initialDealId, onClose }: { initialDealId?: string; 
               Сумма {formatUZS(goods.deal.amount)} · оплачено {formatUZS(goods.deal.paid)} · долг {formatUZS(goods.deal.debt)}
             </Typography.Text>
           </Space>
+          {lines.some((l) => l.qty <= 0 || l.price <= 0) && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 8 }}
+              message="У части позиций ещё нет количества или цены (например, ждут подтверждения склада). Их можно будет оплатить, когда количество и цена появятся в сделке."
+            />
+          )}
           {goods.deal.pendingAmount > 0 && (
             <Alert
               type="info"
@@ -669,7 +679,7 @@ function DealRequestModal({ initialDealId, onClose }: { initialDealId?: string; 
             dataSource={lines}
             pagination={false}
             scroll={{ x: 760 }}
-            locale={{ emptyText: 'В сделке нет позиций с количеством и ценой' }}
+            locale={{ emptyText: 'В сделке нет позиций' }}
           />
           {overDebt && (
             <Alert

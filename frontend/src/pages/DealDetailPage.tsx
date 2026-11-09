@@ -661,6 +661,15 @@ export default function DealDetailPage() {
     || role === 'MANAGER'
   );
   const hasQuantities = (deal.items ?? []).some((i) => i.requestedQty != null);
+  // Заявка на оплату части товаров — для любой не отменённой и не оплаченной сделки, в т.ч. не закрытой.
+  const paymentRequestButton = deal.paymentStatus !== 'PAID' && !['CANCELED', 'REJECTED'].includes(deal.status) && !deal.isArchived
+    && userHasRole(user, 'SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'MANAGER', 'OPERATOR') ? (
+      <Tooltip title="Оплатить часть товаров сделки: бухгалтер примет оплату, сделка не меняется">
+        <Button size="small" icon={<DollarOutlined />} onClick={() => navigate(`/finance/payment-requests?dealId=${deal.id}`)}>
+          Заявка на оплату
+        </Button>
+      </Tooltip>
+    ) : null;
 
   function openSetQuantitiesEditor() {
     // If no items, open add item modal first
@@ -1294,14 +1303,7 @@ export default function DealDetailPage() {
                       Чек PDF
                     </Button>
                   </Tooltip>
-                  {deal.paymentStatus !== 'PAID' && !['CANCELED', 'REJECTED'].includes(deal.status) && !deal.isArchived
-                    && userHasRole(user, 'SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'MANAGER', 'OPERATOR') && (
-                    <Tooltip title="Оплатить часть товаров сделки: бухгалтер примет оплату, сделка не меняется">
-                      <Button size="small" icon={<DollarOutlined />} onClick={() => navigate(`/finance/payment-requests?dealId=${deal.id}`)}>
-                        Заявка на оплату
-                      </Button>
-                    </Tooltip>
-                  )}
+                  {paymentRequestButton}
                   {!isReadOnly && (isAdmin || role === 'MANAGER' || actsAsAccountant || role === 'WAREHOUSE_MANAGER') && (
                     <>
                       <Button size="small" icon={<PlusOutlined />} aria-label="Добавить платёж" onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>Платёж</Button>
@@ -1765,6 +1767,7 @@ export default function DealDetailPage() {
                               Чек PDF
                             </Button>
                           </Tooltip>
+                          {paymentRequestButton}
                           {!isReadOnly && (isAdmin || role === 'MANAGER' || actsAsAccountant || role === 'WAREHOUSE_MANAGER') && (
                             <>
                               <Button size="small" icon={<PlusOutlined />} onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>Добавить платёж</Button>
