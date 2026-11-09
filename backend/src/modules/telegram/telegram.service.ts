@@ -469,6 +469,12 @@ class TelegramService {
     };
   }
 
+  /** Ночь по Ташкенту (22:00–08:00): личные уведомления приходят без звука. */
+  private isQuietHours(): boolean {
+    const h = new Date(Date.now() + 5 * 60 * 60 * 1000).getUTCHours();
+    return h >= 22 || h < 8;
+  }
+
   async sendToUser(userId: string, payload: PushPayload): Promise<void> {
     if (!this.bot) return;
 
@@ -483,6 +489,7 @@ class TelegramService {
       await this.bot.sendMessage(user.telegramChatId, this.formatMessage(payload), {
         parse_mode: 'HTML',
         reply_markup: this.buildInlineKeyboard(payload.url),
+        disable_notification: this.isQuietHours(),
       });
     } catch (err) {
       console.error(`Telegram sendToUser failed for ${userId}:`, (err as Error).message);
@@ -499,10 +506,11 @@ class TelegramService {
 
     const text = this.formatMessage(payload);
     const reply_markup = this.buildInlineKeyboard(payload.url);
+    const disable_notification = this.isQuietHours();
 
     await Promise.allSettled(
       users.map((u) =>
-        this.bot!.sendMessage(u.telegramChatId!, text, { parse_mode: 'HTML', reply_markup }).catch(() => {}),
+        this.bot!.sendMessage(u.telegramChatId!, text, { parse_mode: 'HTML', reply_markup, disable_notification }).catch(() => {}),
       ),
     );
   }
@@ -517,10 +525,11 @@ class TelegramService {
 
     const text = this.formatMessage(payload);
     const reply_markup = this.buildInlineKeyboard(payload.url);
+    const disable_notification = this.isQuietHours();
 
     await Promise.allSettled(
       users.map((u) =>
-        this.bot!.sendMessage(u.telegramChatId!, text, { parse_mode: 'HTML', reply_markup }).catch(() => {}),
+        this.bot!.sendMessage(u.telegramChatId!, text, { parse_mode: 'HTML', reply_markup, disable_notification }).catch(() => {}),
       ),
     );
   }

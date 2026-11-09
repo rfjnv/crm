@@ -11,8 +11,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Сколько последних дней пересинхронизировать после старта сервера и после смены токена. */
 export const BACKFILL_DAYS = 14;
 
-/** Не слать повторный алерт админам об истёкшем токене чаще, чем раз в это время. */
-const TOKEN_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+/** Алерт об истёкшем токене — не чаще раза в сутки и только в рабочие часы по Ташкенту (ночью не будим). */
+const TOKEN_ALERT_HOUR_FROM = 9;
+const TOKEN_ALERT_HOUR_TO = 20;
 
 function tashkentTodayYmd(): string {
   const t = new Date(Date.now() + TASHKENT_OFFSET_MS);
@@ -282,8 +283,12 @@ export async function setTimePayToken(accessToken: string, updatedById: string) 
 
 async function alertAdminsTokenExpired() {
   const row = await getIntegration();
-  const now = Date.now();
-  if (row.lastTokenAlertAt && now - row.lastTokenAlertAt.getTime() < TOKEN_ALERT_COOLDOWN_MS) return;
+  const tashkentHour = new Date(Date.now() + TASHKENT_OFFSET_MS).getUTCHours();
+  if (tashkentHour < TOKEN_ALERT_HOUR_FROM || tashkentHour >= TOKEN_ALERT_HOUR_TO) return;
+  if (row.lastTokenAlertAt) {
+    const lastYmd = new Date(row.lastTokenAlertAt.getTime() + TASHKENT_OFFSET_MS).toISOString().slice(0, 10);
+    if (lastYmd === tashkentTodayYmd()) return;
+  }
 
   await prisma.timePayIntegration.update({
     where: { id: 'singleton' },
