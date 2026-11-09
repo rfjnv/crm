@@ -353,6 +353,7 @@ model User {
 
   paymentRequestsCreated PaymentRequest[] @relation("PaymentRequestCreator")
   paymentRequestsDecided PaymentRequest[] @relation("PaymentRequestDecider")
+  paymentRequestsDocsReady PaymentRequest[] @relation("PaymentRequestDocsReady")
   @@map("users")
 }
 
@@ -1196,6 +1197,13 @@ model PaymentRequest {
   paidAt       DateTime?            @map("paid_at")
   /// Пост в группе финансов: обновляется, когда бухгалтер решил.
   telegramMessageId String?         @map("telegram_message_id")
+  /// Перечисление: как у сделки — ИНН плательщика, нужные документы, разовый/годовой.
+  transferInn       String?         @map("transfer_inn")
+  transferDocuments String[]        @default([]) @map("transfer_documents")
+  transferType      String?         @map("transfer_type")
+  /// Бухгалтер сделал документы; только после этого по перечислению можно принять оплату.
+  docsReadyAt       DateTime?       @map("docs_ready_at")
+  docsReadyById     String?         @map("docs_ready_by_id")
   createdAt    DateTime             @default(now()) @map("created_at")
   updatedAt    DateTime             @updatedAt @map("updated_at")
 
@@ -1203,6 +1211,7 @@ model PaymentRequest {
   deal      Deal?                @relation(fields: [dealId], references: [id], onDelete: SetNull)
   createdBy User                 @relation("PaymentRequestCreator", fields: [createdById], references: [id])
   decidedBy User?                @relation("PaymentRequestDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  docsReadyBy User?              @relation("PaymentRequestDocsReady", fields: [docsReadyById], references: [id], onDelete: SetNull)
   items     PaymentRequestItem[]
   payments  Payment[]
 

@@ -98,6 +98,10 @@ router.post('/:id/accept', authorize(...DECIDE_ROLES), validate(acceptPaymentReq
   res.json(await paymentRequestsService.accept(req.params.id as string, req.body, authUser(req)));
 }));
 
+router.post('/:id/docs-ready', authorize(...DECIDE_ROLES), asyncHandler(async (req: Request, res: Response) => {
+  res.json(await paymentRequestsService.docsReady(req.params.id as string, authUser(req)));
+}));
+
 router.post('/:id/reject', authorize(...DECIDE_ROLES), validate(rejectPaymentRequestDto), asyncHandler(async (req: Request, res: Response) => {
   res.json(await paymentRequestsService.reject(req.params.id as string, req.body.reason, authUser(req)));
 }));

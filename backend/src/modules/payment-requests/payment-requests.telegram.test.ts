@@ -15,6 +15,11 @@ const base = {
   createdAt: new Date('2026-11-09T05:00:00Z'),
   paidAt: null,
   decisionNote: null,
+  transferInn: null,
+  transferDocuments: ['Счет-фактура', 'Накладная'],
+  transferType: 'ONE_TIME',
+  docsReadyAt: null,
+  docsReadyBy: null,
   client: { companyName: 'ООО Принт', inn: '301234567' },
   deal: { title: 'Сделка #1042', transferInn: '309999999' },
   createdBy: { fullName: 'Дилноза' },
@@ -23,22 +28,31 @@ const base = {
 } as unknown as Request;
 
 describe('buildPaymentRequestHtml', () => {
-  it('по перечислению просит счёт-фактуру и берёт ИНН из сделки', () => {
+  it('по перечислению перечисляет документы и берёт ИНН из сделки', () => {
     const html = buildPaymentRequestHtml(base, 'MChJ PRINT');
     expect(html).toContain('Заявка на оплату №12');
-    expect(html).toContain('счёт-фактура');
+    expect(html).toContain('Нужны документы: <b>Счет-фактура, Накладная</b> (разовый)');
+    expect(html).toContain('Ждёт документов от бухгалтерии');
     expect(html).toContain('309999999');
     expect(html).toContain('MChJ PRINT');
     expect(html).toContain('Сделка: <b>Сделка #1042</b>');
     expect(html).toContain('4 000 лист');
     expect(html).toContain('Клиент &lt;срочно&gt;');
-    expect(html).toContain('Ждёт бухгалтера');
+  });
+
+  it('ИНН из заявки важнее ИНН сделки; после документов ждём оплату', () => {
+    const r = { ...base, transferInn: '305555555', docsReadyAt: new Date(), docsReadyBy: { fullName: 'Бухгалтер' } };
+    const html = buildPaymentRequestHtml(r as unknown as Request, null);
+    expect(html).toContain('305555555');
+    expect(html).not.toContain('309999999');
+    expect(html).toContain('Документы готовы</b>: Бухгалтер — ждём оплату');
   });
 
   it('наличные без документов и ИНН, за период', () => {
     const html = buildPaymentRequestHtml({ ...base, method: 'CASH', deal: null } as unknown as Request, null);
-    expect(html).not.toContain('счёт-фактура');
+    expect(html).not.toContain('Нужны документы');
     expect(html).not.toContain('ИНН');
+    expect(html).toContain('Ждёт бухгалтера');
     expect(html).toContain('Период: <b>01.11.2026 — 05.11.2026</b>');
   });
 

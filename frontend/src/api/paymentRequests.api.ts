@@ -27,6 +27,11 @@ export interface PaymentRequest {
   decidedAt: string | null;
   decisionNote: string | null;
   paidAt: string | null;
+  transferInn: string | null;
+  transferDocuments: string[];
+  transferType: 'ONE_TIME' | 'ANNUAL' | null;
+  docsReadyAt: string | null;
+  docsReadyBy: { id: string; fullName: string } | null;
   items: { id: string; product: PaymentRequestProduct; qty: number; price: number; lineTotal: number }[];
   payments: { id: string; amount: number; deal: { id: string; title: string } }[];
 }
@@ -95,6 +100,8 @@ export interface DealGoods {
     paid: number;
     debt: number;
     pendingAmount: number;
+    /** ИНН для перечисления: из сделки, иначе клиента. */
+    inn: string | null;
   };
   lines: {
     dealItemId: string;
@@ -113,6 +120,9 @@ export interface CreatePaymentRequestPayload {
   to?: string;
   method: string;
   note?: string;
+  transferInn?: string;
+  transferDocuments?: string[];
+  transferType?: 'ONE_TIME' | 'ANNUAL';
   items: { productId: string; dealItemId?: string; qty: number; price: number }[];
 }
 
@@ -142,6 +152,8 @@ export const paymentRequestsApi = {
     client.get<PaymentRequestPreview>(`/payment-requests/${id}/preview`).then((r) => r.data),
   accept: (id: string, data: { paidAt?: string; note?: string }) =>
     client.post<PaymentRequest>(`/payment-requests/${id}/accept`, data).then((r) => r.data),
+  docsReady: (id: string) =>
+    client.post<PaymentRequest>(`/payment-requests/${id}/docs-ready`).then((r) => r.data),
   reject: (id: string, reason: string) =>
     client.post<PaymentRequest>(`/payment-requests/${id}/reject`, { reason }).then((r) => r.data),
   cancel: (id: string) =>

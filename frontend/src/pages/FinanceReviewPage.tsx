@@ -236,6 +236,9 @@ export default function FinanceReviewPage() {
                 <Link to={`/clients/${r.client.id}`}>{r.client.companyName}</Link>
                 {r.deal && <> · <Link to={`/deals/${r.deal.id}`}>{r.deal.title}</Link></>}
                 {' '}<Tag color={r.method === 'TRANSFER' ? 'blue' : undefined}>{paymentMethodLabels[r.method] ?? r.method}</Tag>
+                {r.method === 'TRANSFER' && (
+                  r.docsReadyAt ? <Tag color="blue">ждём оплату</Tag> : <Tag color="gold">нужны документы</Tag>
+                )}
                 <Typography.Text type="secondary">{getFirstName(r.createdBy.fullName)}</Typography.Text>
               </span>
               <span>

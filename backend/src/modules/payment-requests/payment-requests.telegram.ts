@@ -22,6 +22,9 @@ const METHOD_LABEL: Record<string, string> = {
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const num = (v: unknown) => Number(v ?? 0);
+/** ИНН перечисления: указанный в заявке, иначе из сделки, иначе клиента. */
+const innOf = (r: RequestForPost) =>
+  r.transferInn?.trim() || r.deal?.transferInn?.trim() || r.client.inn?.trim() || null;
 const sum = (v: unknown) => `${new Intl.NumberFormat('ru-RU').format(num(v))} сум`;
 const qty = (v: unknown) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(num(v));
 const day = (d: Date) => d.toISOString().slice(0, 10).split('-').reverse().join('.');
@@ -37,6 +40,7 @@ async function loadRequest(id: string) {
       deal: { select: { title: true, transferInn: true } },
       createdBy: { select: { fullName: true } },
       decidedBy: { select: { fullName: true } },
+      docsReadyBy: { select: { fullName: true } },
       items: { include: { product: { select: { name: true, sku: true, unit: true } } } },
     },
   });
@@ -61,19 +65,25 @@ function statusLine(r: RequestForPost): string {
     case 'CANCELED':
       return '↩️ <b>Отозвана менеджером</b>';
     default:
-      return '⏳ <b>Ждёт бухгалтера</b>';
+      if (r.method === 'TRANSFER' && r.docsReadyAt) {
+        return `📄 <b>Документы готовы</b>${r.docsReadyBy ? `: ${esc(r.docsReadyBy.fullName)}` : ''} — ждём оплату`;
+      }
+      return r.method === 'TRANSFER' ? '⏳ <b>Ждёт документов от бухгалтерии</b>' : '⏳ <b>Ждёт бухгалтера</b>';
   }
 }
 
 export function buildPaymentRequestHtml(r: RequestForPost, legalName: string | null): string {
   const isTransfer = r.method === 'TRANSFER';
-  const inn = r.deal?.transferInn?.trim() || r.client.inn?.trim() || null;
+  const inn = innOf(r);
+  const docs = r.transferDocuments ?? [];
   const items = r.items.map((i) =>
     `• ${esc(i.product.sku)} — ${qty(i.qty)} ${esc(i.product.unit)} × ${sum(i.price)} = <b>${sum(i.lineTotal)}</b>`);
 
   return [
     `🧾 <b>Заявка на оплату №${r.number}</b> — ${esc(METHOD_LABEL[r.method] ?? r.method)}`,
-    ...(isTransfer ? ['Нужны документы: <b>счёт-фактура</b>'] : []),
+    ...(isTransfer
+      ? [`Нужны документы: <b>${esc(docs.length ? docs.join(', ') : 'счёт-фактура')}</b>${r.transferType ? ` (${r.transferType === 'ANNUAL' ? 'годовой' : 'разовый'})` : ''}`]
+      : []),
     '',
     `Клиент: <b>${esc(r.client.companyName)}</b>`,
     ...(isTransfer ? [`ИНН: <b>${esc(inn ?? '—')}</b>${legalName ? ` — ${esc(legalName)}` : ''}`] : []),
@@ -96,7 +106,7 @@ export async function postPaymentRequestToGroup(id: string): Promise<void> {
   if (!chatId) return;
   const r = await loadRequest(id);
   if (!r) return;
-  const html = buildPaymentRequestHtml(r, await legalNameOf(r.deal?.transferInn?.trim() || r.client.inn?.trim() || null));
+  const html = buildPaymentRequestHtml(r, await legalNameOf(innOf(r)));
   const messageId = await telegramService.sendGroupHtmlMessage(chatId, html, PAGE_LINK);
   if (messageId != null) {
     await prisma.paymentRequest.update({ where: { id }, data: { telegramMessageId: String(messageId) } });
@@ -110,6 +120,6 @@ export async function updatePaymentRequestPost(id: string): Promise<void> {
   const r = await loadRequest(id);
   const messageId = Number(r?.telegramMessageId);
   if (!r || !Number.isFinite(messageId) || messageId <= 0) return;
-  const html = buildPaymentRequestHtml(r, await legalNameOf(r.deal?.transferInn?.trim() || r.client.inn?.trim() || null));
+  const html = buildPaymentRequestHtml(r, await legalNameOf(innOf(r)));
   await telegramService.editGroupHtmlMessage(chatId, messageId, html, PAGE_LINK);
 }

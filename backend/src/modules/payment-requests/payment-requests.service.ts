@@ -24,6 +24,8 @@ const PAGE_LINK = '/finance/payment-requests';
 
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате ГГГГ-ММ-ДД');
 const METHODS = ['TRANSFER', 'CASH', 'PAYME', 'QR', 'CLICK', 'TERMINAL'] as const;
+/** Те же документы, что менеджер отмечает у сделки на перечисление. */
+export const TRANSFER_DOCUMENTS = ['Договор', 'Спецификация', 'Счет', 'Счет-фактура', 'Накладная'] as const;
 
 export const createPaymentRequestDto = z.object({
   clientId: z.string().uuid(),
@@ -33,13 +35,22 @@ export const createPaymentRequestDto = z.object({
   to: dateString.optional(),
   method: z.enum(METHODS).default('TRANSFER'),
   note: z.string().trim().max(500).optional(),
+  transferInn: z.string().trim().max(50).optional(),
+  transferDocuments: z.array(z.enum(TRANSFER_DOCUMENTS)).max(10).optional(),
+  transferType: z.enum(['ONE_TIME', 'ANNUAL']).optional(),
   items: z.array(z.object({
     productId: z.string().uuid(),
     dealItemId: z.string().uuid().optional(),
     qty: z.number().positive('Количество должно быть больше нуля').max(1_000_000),
     price: z.number().positive('Цена должна быть больше нуля').max(1_000_000_000),
   })).min(1, 'Добавьте хотя бы один товар').max(200),
-}).refine((d) => d.dealId || (d.from && d.to), { message: 'Укажите период или сделку', path: ['from'] });
+}).refine((d) => d.dealId || (d.from && d.to), { message: 'Укажите период или сделку', path: ['from'] })
+  .refine((d) => d.method !== 'TRANSFER' || (d.transferInn ?? '').length >= 3, {
+    message: 'Для перечисления укажите ИНН компании', path: ['transferInn'],
+  })
+  .refine((d) => d.method !== 'TRANSFER' || (d.transferDocuments?.length ?? 0) > 0, {
+    message: 'Для перечисления выберите хотя бы один документ', path: ['transferDocuments'],
+  });
 export type CreatePaymentRequestDto = z.infer<typeof createPaymentRequestDto>;
 
 export const acceptPaymentRequestDto = z.object({
@@ -108,6 +119,7 @@ const REQUEST_INCLUDE = {
   deal: { select: { id: true, title: true } },
   createdBy: { select: { id: true, fullName: true } },
   decidedBy: { select: { id: true, fullName: true } },
+  docsReadyBy: { select: { id: true, fullName: true } },
   items: { include: { product: { select: { id: true, name: true, sku: true, unit: true } } } },
   payments: {
     select: { id: true, amount: true, deal: { select: { id: true, title: true } } },
@@ -134,6 +146,11 @@ function present(r: RequestRow) {
     decidedAt: r.decidedAt,
     decisionNote: r.decisionNote,
     paidAt: r.paidAt,
+    transferInn: r.transferInn,
+    transferDocuments: r.transferDocuments,
+    transferType: r.transferType,
+    docsReadyAt: r.docsReadyAt,
+    docsReadyBy: r.docsReadyBy,
     items: r.items.map((i) => ({
       id: i.id,
       product: i.product,
@@ -188,6 +205,16 @@ async function loadPlan(db: Prisma.TransactionClient | typeof prisma, request: {
     deals.map((d) => toPlanDeal(d, start, end)),
   );
   return { deals, plan, start, end };
+}
+
+/** Реквизиты перечисления сохраняем только для перечисления. */
+function transferFields(dto: CreatePaymentRequestDto) {
+  if (dto.method !== 'TRANSFER') return {};
+  return {
+    transferInn: dto.transferInn || null,
+    transferDocuments: [...new Set(dto.transferDocuments ?? [])],
+    transferType: dto.transferType ?? 'ONE_TIME',
+  };
 }
 
 /** Сколько по каждой позиции сделки уже в заявках на рассмотрении и принятых. */
@@ -283,6 +310,7 @@ async function createForDeal(dto: CreatePaymentRequestDto, dealId: string, user:
       method: dto.method,
       amount,
       note: dto.note || null,
+      ...transferFields(dto),
       createdById: user.userId,
       items: { create: lines },
     },
@@ -405,7 +433,8 @@ export const paymentRequestsService = {
         amount: true,
         paidAmount: true,
         createdAt: true,
-        client: { select: { id: true, companyName: true } },
+        transferInn: true,
+        client: { select: { id: true, companyName: true, inn: true } },
         items: {
           select: {
             id: true,
@@ -437,6 +466,7 @@ export const paymentRequestsService = {
         paid: money(deal.paidAmount),
         debt: Math.max(0, money(deal.amount) - money(deal.paidAmount)),
         pendingAmount: money(pending._sum.amount),
+        inn: deal.transferInn?.trim() || deal.client.inn?.trim() || null,
       },
       lines: deal.items
         // Позиции без количества или цены тоже показываем: оплатить их пока нельзя, но видно почему.
@@ -500,6 +530,7 @@ export const paymentRequestsService = {
         method: dto.method,
         amount,
         note: dto.note || null,
+        ...transferFields(dto),
         createdById: user.userId,
         items: { create: lines },
       },
@@ -553,7 +584,8 @@ export const paymentRequestsService = {
     const result = await prisma.$transaction(async (tx) => {
       // Условный переход статуса: второй бухгалтер не проведёт ту же заявку повторно.
       const claimed = await tx.paymentRequest.updateMany({
-        where: { id, status: 'PENDING' },
+        // По перечислению сначала документы, потом оплата — как у сделок.
+        where: { id, status: 'PENDING', OR: [{ method: { not: 'TRANSFER' } }, { docsReadyAt: { not: null } }] },
         data: {
           status: 'ACCEPTED',
           decidedById: user.userId,
@@ -562,7 +594,13 @@ export const paymentRequestsService = {
           paidAt,
         },
       });
-      if (claimed.count === 0) throw new AppError(409, 'Заявка уже обработана. Обновите страницу.');
+      if (claimed.count === 0) {
+        const current = await tx.paymentRequest.findUnique({ where: { id }, select: { status: true } });
+        if (current?.status === 'PENDING') {
+          throw new AppError(400, 'По перечислению сначала сделайте документы и отметьте «Документы готовы».');
+        }
+        throw new AppError(409, 'Заявка уже обработана. Обновите страницу.');
+      }
 
       const request = await tx.paymentRequest.findUniqueOrThrow({ where: { id }, include: REQUEST_INCLUDE });
       const { deals, plan } = await loadPlan(tx, request);
@@ -631,6 +669,31 @@ export const paymentRequestsService = {
     refreshGroupPost(id);
 
     return present(result.request);
+  },
+
+  /** Бухгалтер сделал документы по перечислению; оплату примет, когда деньги придут. */
+  async docsReady(id: string, user: AuthUser) {
+    const claimed = await prisma.paymentRequest.updateMany({
+      where: { id, status: 'PENDING', method: 'TRANSFER', docsReadyAt: null },
+      data: { docsReadyAt: new Date(), docsReadyById: user.userId },
+    });
+    if (claimed.count === 0) throw new AppError(409, 'Заявка уже изменилась. Обновите страницу.');
+    const request = await prisma.paymentRequest.findUniqueOrThrow({ where: { id }, include: REQUEST_INCLUDE });
+    await auditLog({
+      userId: user.userId,
+      action: 'STATUS_CHANGE',
+      entityType: 'payment_request',
+      entityId: id,
+      after: { docsReady: true },
+    });
+    void notifyCreator(
+      request,
+      `Документы по заявке №${request.number} готовы`,
+      `${request.client.companyName}: ждём оплату ${moneyText(money(request.amount))} сум`,
+      user.userId,
+    ).catch((err) => console.error('[payment-requests] notify:', err));
+    refreshGroupPost(id);
+    return present(request);
   },
 
   async reject(id: string, reason: string, user: AuthUser) {

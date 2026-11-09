@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert, Button, Card, DatePicker, Empty, Image, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Skeleton,
-  Space, Table, Tag, Typography, Upload, message,
+  Alert, Button, Card, Checkbox, DatePicker, Empty, Form, Image, Input, InputNumber, Modal, Popconfirm, Radio, Segmented,
+  Select, Skeleton, Space, Table, Tag, Typography, Upload, message,
 } from 'antd';
 import { CameraOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -47,6 +47,55 @@ const METHODS = [
   { label: 'Терминал', value: 'TERMINAL' },
 ];
 const methodLabel = (value: string) => METHODS.find((m) => m.value === value)?.label ?? value;
+
+/** Те же документы, что менеджер отмечает у сделки на перечисление. */
+const TRANSFER_DOCUMENTS = ['Договор', 'Спецификация', 'Счет', 'Счет-фактура', 'Накладная'];
+const DEFAULT_DOCUMENTS = ['Счет-фактура'];
+
+interface TransferInfo {
+  inn: string;
+  documents: string[];
+  type: 'ONE_TIME' | 'ANNUAL';
+}
+const emptyTransfer = (inn = ''): TransferInfo => ({ inn, documents: [...DEFAULT_DOCUMENTS], type: 'ONE_TIME' });
+const transferInvalid = (method: string, t: TransferInfo) =>
+  method === 'TRANSFER' && (t.inn.trim().length < 3 || t.documents.length === 0);
+const transferPayload = (method: string, t: TransferInfo) => (method === 'TRANSFER'
+  ? { transferInn: t.inn.trim(), transferDocuments: t.documents, transferType: t.type }
+  : {});
+
+/** Перечисление: как при отправке сделки бухгалтеру — ИНН, документы, разовый/годовой. */
+function TransferFields({ value, onChange }: { value: TransferInfo; onChange: (v: TransferInfo) => void }) {
+  return (
+    <Card size="small" title="Для бухгалтера — перечисление" style={{ marginBottom: 12 }}>
+      <Form layout="vertical" component="div">
+        <Form.Item label="ИНН компании" required style={{ marginBottom: 8 }}>
+          <Input
+            aria-label="ИНН компании"
+            placeholder="ИНН компании клиента"
+            maxLength={50}
+            value={value.inn}
+            status={value.inn.trim().length < 3 ? 'warning' : undefined}
+            onChange={(e) => onChange({ ...value, inn: e.target.value })}
+          />
+        </Form.Item>
+        <Form.Item label="Документы" required style={{ marginBottom: 8 }}>
+          <Checkbox.Group
+            value={value.documents}
+            options={TRANSFER_DOCUMENTS.map((d) => ({ label: d, value: d }))}
+            onChange={(v) => onChange({ ...value, documents: v as string[] })}
+          />
+        </Form.Item>
+        <Form.Item label="Тип документа" style={{ marginBottom: 0 }}>
+          <Radio.Group value={value.type} onChange={(e) => onChange({ ...value, type: e.target.value })}>
+            <Radio.Button value="ONE_TIME">Разовый</Radio.Button>
+            <Radio.Button value="ANNUAL">Годовой</Radio.Button>
+          </Radio.Group>
+        </Form.Item>
+      </Form>
+    </Card>
+  );
+}
 
 const SOURCE_LABEL: Record<AllocationSource, string> = {
   goods: 'Товар из заявки',
@@ -110,6 +159,7 @@ function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void
   const [period, setPeriod] = useState<[Dayjs, Dayjs] | null>(null);
   const [method, setMethod] = useState('TRANSFER');
   const [note, setNote] = useState('');
+  const [transfer, setTransfer] = useState<TransferInfo>(emptyTransfer());
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [recognized, setRecognized] = useState<RecognizedTable | null>(null);
   const [unmatched, setUnmatched] = useState<RecognizedRow[]>([]);
@@ -170,6 +220,7 @@ function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void
     setPeriod(null);
     setMethod('TRANSFER');
     setNote('');
+    setTransfer(emptyTransfer());
     setRows([]);
     setRecognized(null);
     setUnmatched([]);
@@ -197,6 +248,7 @@ function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void
       to: to!,
       method,
       note: note.trim() || undefined,
+      ...transferPayload(method, transfer),
       items: chosen.map((r) => ({ productId: r.product.id, qty: r.qty!, price: r.price! })),
     }),
     onSuccess: (created) => {
@@ -291,7 +343,10 @@ function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void
       width={isMobile ? '100%' : 960}
       okText="Отправить бухгалтеру"
       cancelText="Отмена"
-      okButtonProps={{ disabled: chosen.length === 0 || missingPrice || unmatched.length > 0, loading: createMut.isPending }}
+      okButtonProps={{
+        disabled: chosen.length === 0 || missingPrice || unmatched.length > 0 || transferInvalid(method, transfer),
+        loading: createMut.isPending,
+      }}
       onOk={() => createMut.mutate()}
       destroyOnHidden
     >
@@ -340,7 +395,10 @@ function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void
           value={clientId}
           optionFilterProp="label"
           options={(clients ?? []).map((c) => ({ value: c.id, label: c.companyName }))}
-          onChange={setClientId}
+          onChange={(id: string) => {
+            setClientId(id);
+            setTransfer((t) => ({ ...t, inn: clients?.find((c) => c.id === id)?.inn?.trim() || '' }));
+          }}
         />
         <DatePicker.RangePicker
           format="DD.MM.YYYY"
@@ -440,6 +498,7 @@ function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void
               message="По некоторым товарам к оплате больше, чем куплено за период и ещё не попало в заявки. Отправить можно, бухгалтер увидит расхождение."
             />
           )}
+          {method === 'TRANSFER' && <TransferFields value={transfer} onChange={setTransfer} />}
           <Input.TextArea
             rows={2}
             maxLength={500}
@@ -478,6 +537,7 @@ function DealRequestModal({ initialDealId, onClose }: { initialDealId?: string; 
   const [dealId, setDealId] = useState<string | undefined>(initialDealId);
   const [method, setMethod] = useState('TRANSFER');
   const [note, setNote] = useState('');
+  const [transfer, setTransfer] = useState<TransferInfo>(emptyTransfer());
   const [lines, setLines] = useState<DealDraftLine[]>([]);
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
@@ -497,6 +557,7 @@ function DealRequestModal({ initialDealId, onClose }: { initialDealId?: string; 
     if (!goods) return;
     if (!clientId) setClientId(goods.deal.client.id);
     setLines(goods.lines.map((l) => ({ ...l, pay: null })));
+    setTransfer((t) => ({ ...t, inn: goods.deal.inn ?? '' }));
   }, [goods]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const free = (l: DealDraftLine) => (l.price > 0 ? Math.max(0, Number((l.qty - l.requestedQty).toFixed(3))) : 0);
@@ -514,6 +575,7 @@ function DealRequestModal({ initialDealId, onClose }: { initialDealId?: string; 
       dealId: goods!.deal.id,
       method,
       note: note.trim() || undefined,
+      ...transferPayload(method, transfer),
       items: chosen.map((l) => ({ productId: l.product.id, dealItemId: l.dealItemId, qty: l.pay!, price: l.price })),
     }),
     onSuccess: (created) => {
@@ -602,7 +664,10 @@ function DealRequestModal({ initialDealId, onClose }: { initialDealId?: string; 
       width={isMobile ? '100%' : 960}
       okText="Отправить бухгалтеру"
       cancelText="Отмена"
-      okButtonProps={{ disabled: !goods || chosen.length === 0 || overDebt || overQty, loading: createMut.isPending }}
+      okButtonProps={{
+        disabled: !goods || chosen.length === 0 || overDebt || overQty || transferInvalid(method, transfer),
+        loading: createMut.isPending,
+      }}
       onOk={() => createMut.mutate()}
       destroyOnHidden
     >
@@ -689,6 +754,7 @@ function DealRequestModal({ initialDealId, onClose }: { initialDealId?: string; 
               message={`Сумма больше долга по сделке (${formatUZS(debt)}). Уменьшите количество.`}
             />
           )}
+          {method === 'TRANSFER' && <TransferFields value={transfer} onChange={setTransfer} />}
           <Input.TextArea
             rows={2}
             maxLength={500}
@@ -889,7 +955,18 @@ function RequestCard({ request, canDecide, currentUserId, onAccept, onReject }: 
     },
     onError: (err) => message.error(errorText(err)),
   });
+  const docsMut = useMutation({
+    mutationFn: () => paymentRequestsApi.docsReady(request.id),
+    onSuccess: () => {
+      message.success('Отмечено: документы готовы. Оплату примите, когда деньги придут.');
+      qc.invalidateQueries({ queryKey: ['payment-requests'] });
+    },
+    onError: (err) => message.error(errorText(err)),
+  });
   const isPending = request.status === 'PENDING';
+  const isTransfer = request.method === 'TRANSFER';
+  // По перечислению сначала документы, потом оплата — как у сделок.
+  const needsDocs = isPending && isTransfer && !request.docsReadyAt;
 
   return (
     <Card size="small" style={{ marginBottom: 12 }}>
@@ -904,7 +981,13 @@ function RequestCard({ request, canDecide, currentUserId, onAccept, onReject }: 
           ) : (
             <Typography.Text type="secondary">{ruDate(request.from)} — {ruDate(request.to)}</Typography.Text>
           )}
-          <Tag color={status.color}>{status.text}</Tag>
+          {isPending && isTransfer ? (
+            needsDocs
+              ? <Tag color="gold">Ждёт документов</Tag>
+              : <Tag color="blue">Документы готовы, ждём оплату</Tag>
+          ) : (
+            <Tag color={status.color}>{status.text}</Tag>
+          )}
           <Tag>{methodLabel(request.method)}</Tag>
         </Space>
         <Typography.Text strong style={{ fontSize: 16 }}>{formatUZS(request.amount)}</Typography.Text>
@@ -921,12 +1004,25 @@ function RequestCard({ request, canDecide, currentUserId, onAccept, onReject }: 
         ))}
       </div>
 
+      {isTransfer && (request.transferInn || request.transferDocuments.length > 0) && (
+        <div style={{ marginTop: 8 }}>
+          {request.transferInn && <Typography.Text>ИНН: <b>{request.transferInn}</b> </Typography.Text>}
+          {request.transferDocuments.map((d) => <Tag key={d}>{d}</Tag>)}
+          {request.transferType && (
+            <Tag color="magenta">{request.transferType === 'ANNUAL' ? 'Годовой' : 'Разовый'}</Tag>
+          )}
+        </div>
+      )}
+
       {request.note && <Typography.Paragraph style={{ marginTop: 8, marginBottom: 0 }}>{request.note}</Typography.Paragraph>}
 
       <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0, fontSize: 12 }}>
         {request.createdBy.fullName}, {dayjs(request.createdAt).format('DD.MM.YYYY HH:mm')}
         {request.decidedBy && request.decidedAt && (
           <> · решил(а) {request.decidedBy.fullName}, {dayjs(request.decidedAt).format('DD.MM.YYYY HH:mm')}</>
+        )}
+        {request.docsReadyAt && (
+          <> · документы {request.docsReadyBy ? `${request.docsReadyBy.fullName}, ` : ''}{dayjs(request.docsReadyAt).format('DD.MM.YYYY HH:mm')}</>
         )}
         {request.paidAt && <> · дата оплаты {dayjs(request.paidAt).format('DD.MM.YYYY')}</>}
       </Typography.Paragraph>
@@ -950,7 +1046,18 @@ function RequestCard({ request, canDecide, currentUserId, onAccept, onReject }: 
 
       {isPending && (canDecide || request.createdBy.id === currentUserId) && (
         <Space wrap style={{ marginTop: 12 }}>
-          {canDecide && <Button type="primary" onClick={onAccept}>Принять оплату</Button>}
+          {canDecide && needsDocs && (
+            <Popconfirm
+              title="Документы сделаны и отправлены?"
+              description="Оплату примете потом, когда деньги придут на счёт."
+              okText="Да, готовы"
+              cancelText="Нет"
+              onConfirm={() => docsMut.mutate()}
+            >
+              <Button type="primary" loading={docsMut.isPending}>Документы готовы</Button>
+            </Popconfirm>
+          )}
+          {canDecide && !needsDocs && <Button type="primary" onClick={onAccept}>Принять оплату</Button>}
           {canDecide && <Button danger onClick={onReject}>Отклонить</Button>}
           {request.createdBy.id === currentUserId && (
             <Popconfirm title="Отозвать заявку?" okText="Отозвать" cancelText="Нет" onConfirm={() => cancelMut.mutate()}>
@@ -996,7 +1103,7 @@ export default function PaymentRequestsPage() {
         <div>
           <Typography.Title level={4} style={{ margin: 0 }}>Заявки на оплату</Typography.Title>
           <Typography.Text type="secondary">
-            Менеджер собирает товары по сделке или за период, бухгалтер принимает оплату. Сделки не меняются.
+            Менеджер собирает товары по сделке или за период. По перечислению бухгалтер сначала делает документы, потом принимает оплату. Сделки не меняются.
           </Typography.Text>
         </div>
         <Space wrap>
