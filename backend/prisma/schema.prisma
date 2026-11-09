@@ -1194,6 +1194,8 @@ model PaymentRequest {
   decidedAt    DateTime?            @map("decided_at")
   decisionNote String?              @map("decision_note")
   paidAt       DateTime?            @map("paid_at")
+  /// Пост в группе финансов: обновляется, когда бухгалтер решил.
+  telegramMessageId String?         @map("telegram_message_id")
   createdAt    DateTime             @default(now()) @map("created_at")
   updatedAt    DateTime             @updatedAt @map("updated_at")
 

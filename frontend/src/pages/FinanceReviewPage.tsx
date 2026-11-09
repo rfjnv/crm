@@ -7,6 +7,7 @@ import {
 import type { Dayjs } from 'dayjs';
 import { ArrowRightOutlined } from '@ant-design/icons';
 import { dealsApi } from '../api/deals.api';
+import { paymentRequestsApi } from '../api/paymentRequests.api';
 import { innRegistryApi } from '../api/innRegistry.api';
 import { formatUZS } from '../utils/currency';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -64,6 +65,13 @@ export default function FinanceReviewPage() {
   });
 
   const list = deals ?? [];
+
+  // Заявки на оплату ждут того же бухгалтера: по перечислению по ним делают документы.
+  const { data: pendingRequests } = useQuery({
+    queryKey: ['payment-requests', 'PENDING'],
+    queryFn: () => paymentRequestsApi.list('PENDING'),
+    refetchInterval: 60_000,
+  });
 
   // Юр. названия ИНН перечисления из справочника «ИНН и сверка»
   const transferInns = useMemo(
@@ -210,6 +218,34 @@ export default function FinanceReviewPage() {
       <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
         Здесь только обзор. Полную проверку и решение удобнее делать внутри самой сделки.
       </Typography.Text>
+
+      {(pendingRequests?.length ?? 0) > 0 && (
+        <Card
+          size="small"
+          style={{ marginBottom: 16 }}
+          title={<>Заявки на оплату <Tag style={{ marginLeft: 4 }}>{pendingRequests!.length}</Tag></>}
+          extra={<Link to="/finance/payment-requests">Все заявки <ArrowRightOutlined /></Link>}
+        >
+          {pendingRequests!.map((r) => (
+            <div
+              key={r.id}
+              style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '6px 0', borderTop: `1px solid ${token.colorBorderSecondary}` }}
+            >
+              <span>
+                <Typography.Text strong>№{r.number}</Typography.Text>{' '}
+                <Link to={`/clients/${r.client.id}`}>{r.client.companyName}</Link>
+                {r.deal && <> · <Link to={`/deals/${r.deal.id}`}>{r.deal.title}</Link></>}
+                {' '}<Tag color={r.method === 'TRANSFER' ? 'blue' : undefined}>{paymentMethodLabels[r.method] ?? r.method}</Tag>
+                <Typography.Text type="secondary">{getFirstName(r.createdBy.fullName)}</Typography.Text>
+              </span>
+              <span>
+                <Typography.Text strong>{formatUZS(r.amount)}</Typography.Text>{' '}
+                <Link to="/finance/payment-requests">Открыть</Link>
+              </span>
+            </div>
+          ))}
+        </Card>
+      )}
 
       <DatePicker.RangePicker
         value={range}

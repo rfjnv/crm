@@ -10,6 +10,7 @@ import { pushService } from '../push/push.service';
 import { telegramService } from '../telegram/telegram.service';
 import { MAX_PAYMENT_AMOUNT } from '../deals/deals.dto';
 import { recordPaidChanges } from '../accounting-changes/accounting-changes.service';
+import { postPaymentRequestToGroup, updatePaymentRequestPost } from './payment-requests.telegram';
 import { planAllocation, toCents, type AllocationSource, type PlanDeal } from './payment-requests.plan';
 
 /**
@@ -221,7 +222,11 @@ async function announceCreated(created: RequestRow, scopeText: string, user: Aut
     `${created.client.companyName}: ${moneyText(amount)} сум ${scopeText}. От: ${created.createdBy.fullName}`,
     user.userId,
   ).catch((err) => console.error('[payment-requests] notify:', err));
+  void postPaymentRequestToGroup(created.id).catch((err) => console.error('[payment-requests] group post:', err));
 }
+
+const refreshGroupPost = (id: string) =>
+  void updatePaymentRequestPost(id).catch((err) => console.error('[payment-requests] group post update:', err));
 
 const qtyText = (v: number) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(v);
 
@@ -623,6 +628,7 @@ export const paymentRequestsService = {
       `${result.request.client.companyName}: ${moneyText(money(result.request.amount))} сум`,
       user.userId,
     ).catch((err) => console.error('[payment-requests] notify:', err));
+    refreshGroupPost(id);
 
     return present(result.request);
   },
@@ -643,6 +649,7 @@ export const paymentRequestsService = {
     });
     void notifyCreator(request, `Заявка на оплату №${request.number} отклонена`, reason, user.userId)
       .catch((err) => console.error('[payment-requests] notify:', err));
+    refreshGroupPost(id);
     return present(request);
   },
 
@@ -659,6 +666,7 @@ export const paymentRequestsService = {
       entityType: 'payment_request',
       entityId: id,
     });
+    refreshGroupPost(id);
     return present(await prisma.paymentRequest.findUniqueOrThrow({ where: { id }, include: REQUEST_INCLUDE }));
   },
 };
