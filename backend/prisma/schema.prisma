@@ -757,6 +757,7 @@ model Deal {
   movements          InventoryMovement[]
   shipment           Shipment?
   payments           Payment[]
+  paymentRequests    PaymentRequest[]
   messages           Message[]
   rating             DealRating?
 
@@ -800,6 +801,7 @@ model DealItem {
   deal      Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
   product   Product @relation(fields: [productId], references: [id])
   confirmer User?   @relation("ItemConfirmedBy", fields: [confirmedBy], references: [id])
+  paymentRequestItems PaymentRequestItem[]
 
   @@index([dealId])
   @@index([isProblem])
@@ -1179,6 +1181,8 @@ model PaymentRequest {
   id           String               @id @default(uuid())
   number       Int                  @unique @default(autoincrement())
   clientId     String               @map("client_id")
+  /// Заявка по одной сделке: оплата ложится только на неё. Пусто — заявка за период.
+  dealId       String?              @map("deal_id")
   periodFrom   DateTime             @map("period_from") @db.Date
   periodTo     DateTime             @map("period_to") @db.Date
   method       String               @default("TRANSFER")
@@ -1194,6 +1198,7 @@ model PaymentRequest {
   updatedAt    DateTime             @updatedAt @map("updated_at")
 
   client    Client               @relation(fields: [clientId], references: [id])
+  deal      Deal?                @relation(fields: [dealId], references: [id], onDelete: SetNull)
   createdBy User                 @relation("PaymentRequestCreator", fields: [createdById], references: [id])
   decidedBy User?                @relation("PaymentRequestDecider", fields: [decidedById], references: [id], onDelete: SetNull)
   items     PaymentRequestItem[]
@@ -1202,6 +1207,7 @@ model PaymentRequest {
   @@index([status, createdAt])
   @@index([clientId, periodFrom])
   @@index([createdById])
+  @@index([dealId])
   @@map("payment_requests")
 }
 
@@ -1209,14 +1215,18 @@ model PaymentRequestItem {
   id        String  @id @default(uuid())
   requestId String  @map("request_id")
   productId String  @map("product_id")
+  /// Позиция сделки, из которой взято количество (заявка по сделке).
+  dealItemId String? @map("deal_item_id")
   qty       Decimal @db.Decimal(12, 3)
   price     Decimal @db.Decimal(12, 2)
   lineTotal Decimal @map("line_total") @db.Decimal(15, 2)
 
   request PaymentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   product Product        @relation(fields: [productId], references: [id])
+  dealItem DealItem?     @relation(fields: [dealItemId], references: [id], onDelete: SetNull)
 
   @@index([requestId])
+  @@index([dealItemId])
   @@index([productId])
   @@map("payment_request_items")
 }

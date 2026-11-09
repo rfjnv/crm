@@ -1282,6 +1282,14 @@ export default function DealDetailPage() {
                       Чек PDF
                     </Button>
                   </Tooltip>
+                  {deal.paymentStatus !== 'PAID' && !['CANCELED', 'REJECTED'].includes(deal.status) && !deal.isArchived
+                    && userHasRole(user, 'SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'MANAGER', 'OPERATOR') && (
+                    <Tooltip title="Оплатить часть товаров сделки: бухгалтер примет оплату, сделка не меняется">
+                      <Button size="small" icon={<DollarOutlined />} onClick={() => navigate(`/finance/payment-requests?dealId=${deal.id}`)}>
+                        Заявка на оплату
+                      </Button>
+                    </Tooltip>
+                  )}
                   {!isReadOnly && (isAdmin || role === 'MANAGER' || actsAsAccountant || role === 'WAREHOUSE_MANAGER') && (
                     <>
                       <Button size="small" icon={<PlusOutlined />} aria-label="Добавить платёж" onClick={() => { setEditingPayment(null); paymentRecordForm.resetFields(); setPaymentRecordModal(true); }}>Платёж</Button>

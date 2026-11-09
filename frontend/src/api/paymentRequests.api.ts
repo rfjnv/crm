@@ -15,6 +15,7 @@ export interface PaymentRequest {
   number: number;
   status: PaymentRequestStatus;
   client: { id: string; companyName: string };
+  deal: { id: string; title: string } | null;
   from: string;
   to: string;
   method: string;
@@ -74,13 +75,45 @@ export interface RecognizedTable {
   warnings: string[];
 }
 
+export interface DealOption {
+  id: string;
+  title: string;
+  status: string;
+  date: string;
+  amount: number;
+  debt: number;
+}
+
+export interface DealGoods {
+  deal: {
+    id: string;
+    title: string;
+    status: string;
+    date: string;
+    client: { id: string; companyName: string };
+    amount: number;
+    paid: number;
+    debt: number;
+    pendingAmount: number;
+  };
+  lines: {
+    dealItemId: string;
+    product: PaymentRequestProduct;
+    qty: number;
+    price: number;
+    lineTotal: number;
+    requestedQty: number;
+  }[];
+}
+
 export interface CreatePaymentRequestPayload {
   clientId: string;
-  from: string;
-  to: string;
+  dealId?: string;
+  from?: string;
+  to?: string;
   method: string;
   note?: string;
-  items: { productId: string; qty: number; price: number }[];
+  items: { productId: string; dealItemId?: string; qty: number; price: number }[];
 }
 
 export const paymentRequestsApi = {
@@ -89,6 +122,10 @@ export const paymentRequestsApi = {
     client.get<PaymentRequest[]>('/payment-requests', { params: { status } }).then((r) => r.data),
   available: (clientId: string, from: string, to: string) =>
     client.get<AvailableGoods>('/payment-requests/available', { params: { clientId, from, to } }).then((r) => r.data),
+  deals: (clientId: string) =>
+    client.get<DealOption[]>('/payment-requests/deals', { params: { clientId } }).then((r) => r.data),
+  dealGoods: (dealId: string) =>
+    client.get<DealGoods>(`/payment-requests/deal/${dealId}`).then((r) => r.data),
   recognize: (image: Blob) => {
     const form = new FormData();
     form.append('image', image, 'table');

@@ -61,6 +61,18 @@ router.get('/available', authorize(...CREATE_ROLES), asyncHandler(async (req: Re
   res.json(await paymentRequestsService.available(clientId, from, to, authUser(req)));
 }));
 
+router.get('/deals', authorize(...CREATE_ROLES), asyncHandler(async (req: Request, res: Response) => {
+  const clientId = z.string().uuid('Выберите клиента').safeParse(req.query.clientId);
+  if (!clientId.success) throw new AppError(400, 'Выберите клиента');
+  res.json(await paymentRequestsService.dealOptions(clientId.data, authUser(req)));
+}));
+
+router.get('/deal/:dealId', authorize(...CREATE_ROLES), asyncHandler(async (req: Request, res: Response) => {
+  const dealId = z.string().uuid().safeParse(req.params.dealId);
+  if (!dealId.success) throw new AppError(404, 'Сделка не найдена');
+  res.json(await paymentRequestsService.dealGoods(dealId.data, authUser(req)));
+}));
+
 router.post('/recognize', authorize(...CREATE_ROLES), uploadImage, asyncHandler(async (req: Request, res: Response) => {
   if (!req.file) throw new AppError(400, 'Загрузите фото таблицы');
   const type = imageTypeOf(req.file.buffer);

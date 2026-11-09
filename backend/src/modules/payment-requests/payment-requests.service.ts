@@ -26,16 +26,19 @@ const METHODS = ['TRANSFER', 'CASH', 'PAYME', 'QR', 'CLICK', 'TERMINAL'] as cons
 
 export const createPaymentRequestDto = z.object({
   clientId: z.string().uuid(),
-  from: dateString,
-  to: dateString,
+  /** Заявка по одной сделке: период не нужен, количество берётся из её позиций. */
+  dealId: z.string().uuid().optional(),
+  from: dateString.optional(),
+  to: dateString.optional(),
   method: z.enum(METHODS).default('TRANSFER'),
   note: z.string().trim().max(500).optional(),
   items: z.array(z.object({
     productId: z.string().uuid(),
+    dealItemId: z.string().uuid().optional(),
     qty: z.number().positive('Количество должно быть больше нуля').max(1_000_000),
     price: z.number().positive('Цена должна быть больше нуля').max(1_000_000_000),
   })).min(1, 'Добавьте хотя бы один товар').max(200),
-});
+}).refine((d) => d.dealId || (d.from && d.to), { message: 'Укажите период или сделку', path: ['from'] });
 export type CreatePaymentRequestDto = z.infer<typeof createPaymentRequestDto>;
 
 export const acceptPaymentRequestDto = z.object({
@@ -65,7 +68,7 @@ const DEAL_SELECT = {
   clientId: true,
   createdAt: true,
   items: {
-    select: { productId: true, requestedQty: true, price: true, lineTotal: true, dealDate: true, createdAt: true },
+    select: { id: true, productId: true, requestedQty: true, price: true, lineTotal: true, dealDate: true, createdAt: true },
   },
 } satisfies Prisma.DealSelect;
 type DealRow = Prisma.DealGetPayload<{ select: typeof DEAL_SELECT }>;
@@ -101,6 +104,7 @@ const LIVE_DEAL_WHERE = {
 
 const REQUEST_INCLUDE = {
   client: { select: { id: true, companyName: true } },
+  deal: { select: { id: true, title: true } },
   createdBy: { select: { id: true, fullName: true } },
   decidedBy: { select: { id: true, fullName: true } },
   items: { include: { product: { select: { id: true, name: true, sku: true, unit: true } } } },
@@ -117,6 +121,7 @@ function present(r: RequestRow) {
     number: r.number,
     status: r.status,
     client: r.client,
+    deal: r.deal,
     from: dayOf(r.periodFrom),
     to: dayOf(r.periodTo),
     method: r.method,
@@ -162,12 +167,19 @@ async function notifyCreator(request: { createdById: string }, title: string, bo
 const canDecide = (user: AuthUser) => hasRole(user, ...DECIDE_ROLES);
 const moneyText = (v: number) => new Intl.NumberFormat('ru-RU').format(v);
 
+/** Для заявки по сделке период не ограничивает: в расчёт идут все позиции сделки. */
+const ALL_TIME = { start: new Date(0), end: new Date('3000-01-01T00:00:00.000Z') };
+
 async function loadPlan(db: Prisma.TransactionClient | typeof prisma, request: {
-  clientId: string; periodFrom: Date; periodTo: Date; items: { productId: string; lineTotal: Prisma.Decimal }[];
+  clientId: string; dealId: string | null; periodFrom: Date; periodTo: Date;
+  items: { productId: string; lineTotal: Prisma.Decimal }[];
 }) {
-  const { start, end } = periodBounds(dayOf(request.periodFrom), dayOf(request.periodTo));
+  // Заявка по сделке ложится только на эту сделку: лишнее не уходит на другие долги клиента.
+  const { start, end } = request.dealId ? ALL_TIME : periodBounds(dayOf(request.periodFrom), dayOf(request.periodTo));
   const deals = await db.deal.findMany({
-    where: { clientId: request.clientId, ...LIVE_DEAL_WHERE },
+    where: request.dealId
+      ? { id: request.dealId, clientId: request.clientId, ...LIVE_DEAL_WHERE }
+      : { clientId: request.clientId, ...LIVE_DEAL_WHERE },
     select: DEAL_SELECT,
   });
   const plan = planAllocation(
@@ -175,6 +187,105 @@ async function loadPlan(db: Prisma.TransactionClient | typeof prisma, request: {
     deals.map((d) => toPlanDeal(d, start, end)),
   );
   return { deals, plan, start, end };
+}
+
+/** Сколько по каждой позиции сделки уже в заявках на рассмотрении и принятых. */
+async function requestedByDealItem(db: Prisma.TransactionClient | typeof prisma, dealItemIds: string[]) {
+  if (dealItemIds.length === 0) return new Map<string, number>();
+  const rows = await db.paymentRequestItem.groupBy({
+    by: ['dealItemId'],
+    where: { dealItemId: { in: dealItemIds }, request: { status: { in: ['PENDING', 'ACCEPTED'] } } },
+    _sum: { qty: true },
+  });
+  return new Map(rows.map((r) => [r.dealItemId as string, money(r._sum.qty)]));
+}
+
+async function announceCreated(created: RequestRow, scopeText: string, user: AuthUser) {
+  const amount = money(created.amount);
+  await auditLog({
+    userId: user.userId,
+    action: 'CREATE',
+    entityType: 'payment_request',
+    entityId: created.id,
+    after: {
+      number: created.number,
+      clientId: created.client.id,
+      dealId: created.deal?.id ?? null,
+      amount,
+      from: dayOf(created.periodFrom),
+      to: dayOf(created.periodTo),
+    },
+  });
+  void notifyAccountants(
+    `Заявка на оплату №${created.number}`,
+    `${created.client.companyName}: ${moneyText(amount)} сум ${scopeText}. От: ${created.createdBy.fullName}`,
+    user.userId,
+  ).catch((err) => console.error('[payment-requests] notify:', err));
+}
+
+const qtyText = (v: number) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(v);
+
+/**
+ * Заявка по одной сделке, в том числе не закрытой: менеджер берёт часть количества из позиций
+ * (например, 4 000 из 10 400 листов), и оплата потом ложится только на эту сделку.
+ * Цена берётся из сделки, количество не больше того, что ещё не попало в другие заявки.
+ */
+async function createForDeal(dto: CreatePaymentRequestDto, dealId: string, user: AuthUser) {
+  const deal = await prisma.deal.findFirst({
+    where: { id: dealId, clientId: dto.clientId, ...LIVE_DEAL_WHERE, ...ownerScope(user) },
+    select: DEAL_SELECT,
+  });
+  if (!deal) throw new AppError(404, 'Сделка не найдена');
+
+  const itemById = new Map(deal.items.map((i) => [i.id, i]));
+  const requested = await requestedByDealItem(prisma, deal.items.map((i) => i.id));
+  const taken = new Map<string, number>();
+  const lines = dto.items.map((line) => {
+    const item = line.dealItemId ? itemById.get(line.dealItemId) : undefined;
+    if (!item || item.productId !== line.productId) throw new AppError(400, 'Позиция не из этой сделки');
+    const price = money(item.price);
+    if (price <= 0) throw new AppError(400, 'У позиции сделки нет цены');
+    const free = money(item.requestedQty) - (requested.get(item.id) ?? 0) - (taken.get(item.id) ?? 0);
+    if (line.qty > free + 1e-9) {
+      throw new AppError(400, `По позиции можно оплатить не больше ${qtyText(Math.max(0, free))}`);
+    }
+    taken.set(item.id, (taken.get(item.id) ?? 0) + line.qty);
+    return {
+      productId: item.productId,
+      dealItemId: item.id,
+      qty: line.qty,
+      price,
+      lineTotal: Math.round(line.qty * price * 100) / 100,
+    };
+  });
+
+  const amount = Math.round(lines.reduce((sum, l) => sum + l.lineTotal, 0) * 100) / 100;
+  const debt = money(deal.amount) - money(deal.paidAmount);
+  if (toCents(amount) > toCents(debt)) {
+    throw new AppError(400, `Сумма заявки больше долга по сделке (${moneyText(Math.max(0, debt))} сум)`);
+  }
+
+  const days = deal.items
+    .filter((i) => taken.has(i.id))
+    .map((i) => tashkentDayKey(i.dealDate ?? deal.createdAt))
+    .sort();
+  const created = await prisma.paymentRequest.create({
+    data: {
+      clientId: dto.clientId,
+      dealId,
+      periodFrom: new Date(`${days[0]}T00:00:00.000Z`),
+      periodTo: new Date(`${days[days.length - 1]}T00:00:00.000Z`),
+      method: dto.method,
+      amount,
+      note: dto.note || null,
+      createdById: user.userId,
+      items: { create: lines },
+    },
+    include: REQUEST_INCLUDE,
+  });
+
+  await announceCreated(created, `по сделке «${deal.title}»`, user);
+  return present(created);
 }
 
 export const paymentRequestsService = {
@@ -252,6 +363,84 @@ export const paymentRequestsService = {
     return { rows, periodDebt, dealsInPeriod };
   },
 
+  /** Сделки клиента с долгом, в том числе не закрытые: из них можно собрать заявку по сделке. */
+  async dealOptions(clientId: string, user: AuthUser) {
+    const deals = await prisma.deal.findMany({
+      where: { clientId, ...LIVE_DEAL_WHERE, ...ownerScope(user) },
+      select: { id: true, title: true, status: true, amount: true, paidAmount: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 300,
+    });
+    return deals
+      .map((d) => ({
+        id: d.id,
+        title: d.title,
+        status: d.status,
+        date: tashkentDayKey(d.createdAt),
+        amount: money(d.amount),
+        debt: Math.max(0, money(d.amount) - money(d.paidAmount)),
+      }))
+      .filter((d) => d.debt > 0)
+      .slice(0, 100);
+  },
+
+  /** Позиции сделки: сколько в ней каждого товара и сколько уже попало в заявки. */
+  async dealGoods(dealId: string, user: AuthUser) {
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, ...LIVE_DEAL_WHERE, ...ownerScope(user) },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        amount: true,
+        paidAmount: true,
+        createdAt: true,
+        client: { select: { id: true, companyName: true } },
+        items: {
+          select: {
+            id: true,
+            requestedQty: true,
+            price: true,
+            lineTotal: true,
+            product: { select: { id: true, name: true, sku: true, unit: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+    if (!deal) throw new AppError(404, 'Сделка не найдена');
+
+    const requested = await requestedByDealItem(prisma, deal.items.map((i) => i.id));
+    const pending = await prisma.paymentRequest.aggregate({
+      where: { dealId, status: 'PENDING' },
+      _sum: { amount: true },
+    });
+
+    return {
+      deal: {
+        id: deal.id,
+        title: deal.title,
+        status: deal.status,
+        date: tashkentDayKey(deal.createdAt),
+        client: deal.client,
+        amount: money(deal.amount),
+        paid: money(deal.paidAmount),
+        debt: Math.max(0, money(deal.amount) - money(deal.paidAmount)),
+        pendingAmount: money(pending._sum.amount),
+      },
+      lines: deal.items
+        .filter((i) => money(i.requestedQty) > 0 && money(i.price) > 0)
+        .map((i) => ({
+          dealItemId: i.id,
+          product: i.product,
+          qty: money(i.requestedQty),
+          price: money(i.price),
+          lineTotal: i.lineTotal != null ? money(i.lineTotal) : money(i.requestedQty) * money(i.price),
+          requestedQty: requested.get(i.id) ?? 0,
+        })),
+    };
+  },
+
   async list(status: PaymentRequestStatus | undefined, user: AuthUser) {
     const rows = await prisma.paymentRequest.findMany({
       where: {
@@ -270,7 +459,10 @@ export const paymentRequestsService = {
   },
 
   async create(dto: CreatePaymentRequestDto, user: AuthUser) {
-    if (dto.from > dto.to) throw new AppError(400, 'Начало периода позже конца');
+    if (dto.dealId) return createForDeal(dto, dto.dealId, user);
+    const from = dto.from!;
+    const to = dto.to!;
+    if (from > to) throw new AppError(400, 'Начало периода позже конца');
     const client = await prisma.client.findFirst({
       where: { id: dto.clientId, isArchived: false },
       select: { id: true, companyName: true },
@@ -282,7 +474,9 @@ export const paymentRequestsService = {
     if (found !== productIds.length) throw new AppError(404, 'Товар не найден');
 
     const lines = dto.items.map((i) => ({
-      ...i,
+      productId: i.productId,
+      qty: i.qty,
+      price: i.price,
       lineTotal: Math.round(i.qty * i.price * 100) / 100,
     }));
     const amount = Math.round(lines.reduce((sum, l) => sum + l.lineTotal, 0) * 100) / 100;
@@ -291,8 +485,8 @@ export const paymentRequestsService = {
     const created = await prisma.paymentRequest.create({
       data: {
         clientId: dto.clientId,
-        periodFrom: new Date(`${dto.from}T00:00:00.000Z`),
-        periodTo: new Date(`${dto.to}T00:00:00.000Z`),
+        periodFrom: new Date(`${from}T00:00:00.000Z`),
+        periodTo: new Date(`${to}T00:00:00.000Z`),
         method: dto.method,
         amount,
         note: dto.note || null,
@@ -302,19 +496,7 @@ export const paymentRequestsService = {
       include: REQUEST_INCLUDE,
     });
 
-    await auditLog({
-      userId: user.userId,
-      action: 'CREATE',
-      entityType: 'payment_request',
-      entityId: created.id,
-      after: { number: created.number, clientId: dto.clientId, amount, from: dto.from, to: dto.to },
-    });
-    void notifyAccountants(
-      `Заявка на оплату №${created.number}`,
-      `${client.companyName}: ${moneyText(amount)} сум за ${dto.from} — ${dto.to}. От: ${created.createdBy.fullName}`,
-      user.userId,
-    ).catch((err) => console.error('[payment-requests] notify:', err));
-
+    await announceCreated(created, `за ${from} — ${to}`, user);
     return present(created);
   },
 

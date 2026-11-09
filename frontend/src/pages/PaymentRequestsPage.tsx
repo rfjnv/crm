@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert, Button, Card, DatePicker, Empty, Image, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Skeleton,
@@ -8,6 +8,7 @@ import {
 import { CameraOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import BackButton from '../components/BackButton';
+import DealStatusTag from '../components/DealStatusTag';
 import { clientsApi } from '../api/clients.api';
 import { productsApi } from '../api/products.api';
 import {
@@ -23,7 +24,7 @@ import { useAuthStore } from '../store/authStore';
 import { userHasRole } from '../lib/roles';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatUZS, moneyFormatter, moneyParser } from '../utils/currency';
-import type { Product } from '../types';
+import type { DealStatus, Product } from '../types';
 
 /**
  * Заявки на оплату: менеджер собирает товары за период и отправляет бухгалтеру, бухгалтер
@@ -457,6 +458,244 @@ function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void
   );
 }
 
+interface DealDraftLine {
+  dealItemId: string;
+  product: PaymentRequestProduct;
+  qty: number;
+  price: number;
+  requestedQty: number;
+  pay: number | null;
+}
+
+/**
+ * Заявка по одной сделке, в том числе не закрытой: менеджер берёт часть количества
+ * (например, 4 000 из 10 400 листов). Делить сделку не нужно, оплата ляжет только на неё.
+ */
+function DealRequestModal({ initialDealId, onClose }: { initialDealId?: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const isMobile = useIsMobile();
+  const [clientId, setClientId] = useState<string>();
+  const [dealId, setDealId] = useState<string | undefined>(initialDealId);
+  const [method, setMethod] = useState('TRANSFER');
+  const [note, setNote] = useState('');
+  const [lines, setLines] = useState<DealDraftLine[]>([]);
+
+  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: clientsApi.list });
+  const { data: deals, isFetching: dealsLoading } = useQuery({
+    queryKey: ['payment-requests-deals', clientId],
+    queryFn: () => paymentRequestsApi.deals(clientId!),
+    enabled: !!clientId,
+  });
+  const { data: goods, isFetching: goodsLoading, error: goodsError } = useQuery({
+    queryKey: ['payment-requests-deal', dealId],
+    queryFn: () => paymentRequestsApi.dealGoods(dealId!),
+    enabled: !!dealId,
+    gcTime: 0,
+  });
+
+  useEffect(() => {
+    if (!goods) return;
+    if (!clientId) setClientId(goods.deal.client.id);
+    setLines(goods.lines.map((l) => ({ ...l, pay: null })));
+  }, [goods]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const free = (l: DealDraftLine) => Math.max(0, Number((l.qty - l.requestedQty).toFixed(3)));
+  const chosen = lines.filter((l) => (l.pay ?? 0) > 0);
+  const total = Math.round(chosen.reduce((sum, l) => sum + (l.pay ?? 0) * l.price, 0) * 100) / 100;
+  const debt = goods?.deal.debt ?? 0;
+  const overDebt = total > debt + 0.001;
+  const overQty = chosen.some((l) => (l.pay ?? 0) > free(l) + 1e-9);
+  const setPay = (id: string, pay: number | null) =>
+    setLines((ls) => ls.map((l) => (l.dealItemId === id ? { ...l, pay } : l)));
+
+  const createMut = useMutation({
+    mutationFn: () => paymentRequestsApi.create({
+      clientId: goods!.deal.client.id,
+      dealId: goods!.deal.id,
+      method,
+      note: note.trim() || undefined,
+      items: chosen.map((l) => ({ productId: l.product.id, dealItemId: l.dealItemId, qty: l.pay!, price: l.price })),
+    }),
+    onSuccess: (created) => {
+      message.success(`Заявка №${created.number} отправлена бухгалтеру`);
+      qc.invalidateQueries({ queryKey: ['payment-requests'] });
+      qc.invalidateQueries({ queryKey: ['payment-requests-summary'] });
+      qc.removeQueries({ queryKey: ['payment-requests-deal'] });
+      qc.removeQueries({ queryKey: ['payment-requests-deals'] });
+      onClose();
+    },
+    onError: (err) => message.error(errorText(err)),
+  });
+
+  const columns = [
+    {
+      title: 'Товар',
+      key: 'product',
+      render: (_: unknown, l: DealDraftLine) => (
+        <>
+          <div>{l.product.sku}</div>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{l.product.name}</Typography.Text>
+        </>
+      ),
+    },
+    {
+      title: 'В сделке',
+      key: 'qty',
+      align: 'right' as const,
+      width: 110,
+      render: (_: unknown, l: DealDraftLine) => `${qtyText(l.qty)} ${l.product.unit}`,
+    },
+    {
+      title: 'Уже в заявках',
+      key: 'requested',
+      align: 'right' as const,
+      width: 110,
+      render: (_: unknown, l: DealDraftLine) => (l.requestedQty > 0 ? qtyText(l.requestedQty) : '—'),
+    },
+    {
+      title: 'К оплате',
+      key: 'pay',
+      width: 180,
+      render: (_: unknown, l: DealDraftLine) => {
+        const left = free(l);
+        return (
+          <Space.Compact style={{ width: '100%' }}>
+            <InputNumber
+              aria-label={`Количество к оплате, ${l.product.sku}`}
+              min={0}
+              max={left}
+              disabled={left <= 0}
+              placeholder={left > 0 ? `до ${qtyText(left)}` : 'всё в заявках'}
+              value={l.pay}
+              status={(l.pay ?? 0) > left ? 'error' : undefined}
+              style={{ width: '100%' }}
+              onChange={(v) => setPay(l.dealItemId, v)}
+            />
+            {left > 0 && <Button onClick={() => setPay(l.dealItemId, left)}>Всё</Button>}
+          </Space.Compact>
+        );
+      },
+    },
+    {
+      title: 'Цена',
+      key: 'price',
+      align: 'right' as const,
+      width: 120,
+      render: (_: unknown, l: DealDraftLine) => formatUZS(l.price),
+    },
+    {
+      title: 'Сумма',
+      key: 'sum',
+      align: 'right' as const,
+      width: 130,
+      render: (_: unknown, l: DealDraftLine) => ((l.pay ?? 0) > 0 ? formatUZS((l.pay ?? 0) * l.price) : '—'),
+    },
+  ];
+
+  return (
+    <Modal
+      open
+      onCancel={onClose}
+      title="Заявка на оплату по сделке"
+      width={isMobile ? '100%' : 960}
+      okText="Отправить бухгалтеру"
+      cancelText="Отмена"
+      okButtonProps={{ disabled: !goods || chosen.length === 0 || overDebt || overQty, loading: createMut.isPending }}
+      onOk={() => createMut.mutate()}
+      destroyOnHidden
+    >
+      <Space wrap style={{ marginBottom: 12, width: '100%' }}>
+        <Select
+          showSearch
+          aria-label="Клиент"
+          placeholder="Клиент"
+          style={{ width: 260, maxWidth: '100%' }}
+          value={clientId}
+          optionFilterProp="label"
+          options={(clients ?? []).map((c) => ({ value: c.id, label: c.companyName }))}
+          onChange={(id: string) => { setClientId(id); setDealId(undefined); setLines([]); }}
+        />
+        <Select
+          showSearch
+          aria-label="Сделка"
+          placeholder={clientId ? 'Сделка с долгом' : 'Сначала клиент'}
+          style={{ width: 380, maxWidth: '100%' }}
+          disabled={!clientId}
+          loading={dealsLoading}
+          value={dealId}
+          optionFilterProp="label"
+          notFoundContent="Нет сделок с долгом"
+          options={[
+            ...(goods && !deals?.some((d) => d.id === goods.deal.id)
+              ? [{ value: goods.deal.id, label: `${goods.deal.title} · долг ${formatUZS(goods.deal.debt)}` }]
+              : []),
+            ...(deals ?? []).map((d) => ({
+              value: d.id,
+              label: `${d.title} · ${ruDate(d.date)} · долг ${formatUZS(d.debt)}`,
+            })),
+          ]}
+          onChange={(id: string) => setDealId(id)}
+        />
+        <Select aria-label="Способ оплаты" style={{ width: 170 }} value={method} options={METHODS} onChange={setMethod} />
+      </Space>
+
+      {goodsError ? (
+        <Alert type="error" showIcon message={errorText(goodsError)} />
+      ) : !dealId ? (
+        <Empty description="Выберите клиента и сделку: можно взять часть количества по каждому товару" />
+      ) : goodsLoading || !goods ? (
+        <Skeleton active />
+      ) : (
+        <>
+          <Space wrap style={{ marginBottom: 8 }}>
+            <Link to={`/deals/${goods.deal.id}`} target="_blank">{goods.deal.title}</Link>
+            <DealStatusTag status={goods.deal.status as DealStatus} />
+            <Typography.Text type="secondary">
+              Сумма {formatUZS(goods.deal.amount)} · оплачено {formatUZS(goods.deal.paid)} · долг {formatUZS(goods.deal.debt)}
+            </Typography.Text>
+          </Space>
+          {goods.deal.pendingAmount > 0 && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 8 }}
+              message={`По этой сделке уже ждут бухгалтера заявки на ${formatUZS(goods.deal.pendingAmount)}.`}
+            />
+          )}
+          <Table
+            size="small"
+            rowKey={(l) => l.dealItemId}
+            columns={columns}
+            dataSource={lines}
+            pagination={false}
+            scroll={{ x: 760 }}
+            locale={{ emptyText: 'В сделке нет позиций с количеством и ценой' }}
+          />
+          {overDebt && (
+            <Alert
+              type="error"
+              showIcon
+              style={{ marginTop: 8 }}
+              message={`Сумма больше долга по сделке (${formatUZS(debt)}). Уменьшите количество.`}
+            />
+          )}
+          <Input.TextArea
+            rows={2}
+            maxLength={500}
+            placeholder="Комментарий для бухгалтера"
+            value={note}
+            style={{ marginTop: 12 }}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <Typography.Title level={5} style={{ textAlign: 'right', marginTop: 12, marginBottom: 0 }}>
+            Итого: {formatUZS(total)}
+          </Typography.Title>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 function AcceptModal({ request, onClose }: { request: PaymentRequest; onClose: () => void }) {
   const qc = useQueryClient();
   const isMobile = useIsMobile();
@@ -511,7 +750,7 @@ function AcceptModal({ request, onClose }: { request: PaymentRequest; onClose: (
               { title: 'Товар', key: 'p', render: (_, l) => l.product.sku },
               { title: 'В заявке', key: 'q', align: 'right', render: (_, l) => `${qtyText(l.qty)} ${l.product.unit}` },
               {
-                title: 'Куплено за период',
+                title: request.deal ? 'В сделке' : 'Куплено за период',
                 key: 'b',
                 align: 'right',
                 render: (_, l) => (
@@ -529,7 +768,9 @@ function AcceptModal({ request, onClose }: { request: PaymentRequest; onClose: (
               type="warning"
               showIcon
               style={{ marginTop: 8 }}
-              message="В заявке больше, чем куплено за период. Разница ляжет на другие долги клиента, см. ниже."
+              message={request.deal
+                ? 'В заявке больше, чем в сделке. Проверьте распределение ниже.'
+                : 'В заявке больше, чем куплено за период. Разница ляжет на другие долги клиента, см. ниже.'}
             />
           )}
 
@@ -646,7 +887,13 @@ function RequestCard({ request, canDecide, currentUserId, onAccept, onReject }: 
         <Space wrap>
           <Typography.Text strong>№{request.number}</Typography.Text>
           <Link to={`/clients/${request.client.id}`}>{request.client.companyName}</Link>
-          <Typography.Text type="secondary">{ruDate(request.from)} — {ruDate(request.to)}</Typography.Text>
+          {request.deal ? (
+            <Typography.Text type="secondary">
+              по сделке <Link to={`/deals/${request.deal.id}`}>{request.deal.title}</Link>
+            </Typography.Text>
+          ) : (
+            <Typography.Text type="secondary">{ruDate(request.from)} — {ruDate(request.to)}</Typography.Text>
+          )}
           <Tag color={status.color}>{status.text}</Tag>
           <Tag>{methodLabel(request.method)}</Tag>
         </Space>
@@ -711,6 +958,18 @@ export default function PaymentRequestsPage() {
   const canDecide = userHasRole(user, 'SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT');
   const [status, setStatus] = useState<PaymentRequestStatus>('PENDING');
   const [creating, setCreating] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Из карточки сделки приходим с ?dealId=: сразу открываем заявку по этой сделке.
+  const [dealRequest, setDealRequest] = useState<{ dealId?: string } | null>(
+    () => (searchParams.get('dealId') ? { dealId: searchParams.get('dealId')! } : null),
+  );
+  const closeDealRequest = () => {
+    setDealRequest(null);
+    if (searchParams.has('dealId')) {
+      searchParams.delete('dealId');
+      setSearchParams(searchParams, { replace: true });
+    }
+  };
   const [accepting, setAccepting] = useState<PaymentRequest | null>(null);
   const [rejecting, setRejecting] = useState<PaymentRequest | null>(null);
 
@@ -727,10 +986,13 @@ export default function PaymentRequestsPage() {
         <div>
           <Typography.Title level={4} style={{ margin: 0 }}>Заявки на оплату</Typography.Title>
           <Typography.Text type="secondary">
-            Менеджер собирает товары за период, бухгалтер принимает оплату. Сделки не меняются.
+            Менеджер собирает товары по сделке или за период, бухгалтер принимает оплату. Сделки не меняются.
           </Typography.Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>Новая заявка</Button>
+        <Space wrap>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setDealRequest({})}>По сделке</Button>
+          <Button icon={<PlusOutlined />} onClick={() => setCreating(true)}>За период</Button>
+        </Space>
       </Space>
 
       <Segmented
@@ -759,6 +1021,7 @@ export default function PaymentRequestsPage() {
       ))}
 
       <NewRequestModal open={creating} onClose={() => setCreating(false)} />
+      {dealRequest && <DealRequestModal initialDealId={dealRequest.dealId} onClose={closeDealRequest} />}
       {accepting && <AcceptModal request={accepting} onClose={() => setAccepting(null)} />}
       {rejecting && <RejectModal request={rejecting} onClose={() => setRejecting(null)} />}
     </div>
