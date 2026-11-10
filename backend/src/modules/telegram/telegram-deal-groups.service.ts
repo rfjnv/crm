@@ -593,47 +593,6 @@ function resolveProductionBoardChatId(deal: {
  * Статус READY_FOR_SHIPMENT + задан TELEGRAM_GROUP_READY_FOR_SHIPMENT_CHAT_ID:
  * дублируем пост в чат отгрузки, удаляем из производства, помечаем productionTelegramMessageInRfsChat.
  */
-/**
- * С этого момента правило действует: сделки, созданные раньше, уже в группах и в работе —
- * у них отметки о документах нет, и без этой границы их посты пропали бы при первой правке.
- */
-export const HOLD_FOR_DOCS_SINCE = new Date('2026-11-09T06:30:00.000Z');
-
-/**
- * Сделку на перечисление не пускаем в группы производства и отгрузки, пока бухгалтерия
- * не отметила «Документы готовы»: иначе товар готовят и отгружают без документов.
- */
-export function isHeldForDocs(deal: {
-  paymentMethod: PaymentMethod | null;
-  docsReadyAt: Date | null;
-  createdAt: Date;
-}): boolean {
-  return deal.paymentMethod === 'TRANSFER' && !deal.docsReadyAt && deal.createdAt >= HOLD_FOR_DOCS_SINCE;
-}
-
-async function dealHeldForDocs(dealId: string): Promise<boolean> {
-  const row = await prisma.deal.findUnique({
-    where: { id: dealId },
-    select: { paymentMethod: true, docsReadyAt: true, createdAt: true },
-  });
-  return !!row && isHeldForDocs(row);
-}
-
-/**
- * Бухгалтерия отметила документы: отправить задержанную сделку в группу производства
- * (или сразу в отгрузку — по статусу) и обновить остальные посты.
- */
-export async function releaseDealAfterDocs(dealId: string): Promise<void> {
-  const row = await prisma.deal.findUnique({ where: { id: dealId }, select: { status: true } });
-  if (!row) return;
-  if (row.status === 'IN_PROGRESS') {
-    await trySendProductionTelegram(dealId);
-  } else {
-    await sendProductionPaymentSubmitTelegram(dealId);
-  }
-  await syncDealTelegramGroupMessages(dealId);
-}
-
 async function migrateProductionMessageToRfsIfNeeded(dealId: string): Promise<void> {
   const prod = config.telegram.groupProductionChatId?.trim();
   const rfs = config.telegram.groupReadyForShipmentChatId?.trim();
@@ -818,9 +777,6 @@ export async function trySendWarehouseTelegram(dealId: string): Promise<void> {
 export async function trySendProductionTelegram(dealId: string): Promise<void> {
   const chatId = config.telegram.groupProductionChatId;
   if (!chatId) return;
-  // Задержана до документов: новый пост не шлём. Уже отправленный пост не удаляем —
-  // его обновляет syncDealTelegramGroupMessages, со строкой «документы ещё не готовы».
-  if (await dealHeldForDocs(dealId)) return;
 
   const deal = await prisma.deal.findUnique({
     where: { id: dealId },
@@ -936,7 +892,6 @@ export async function trySendProductionTelegram(dealId: string): Promise<void> {
 export async function trySendProductionIntakeTelegram(dealId: string): Promise<void> {
   const chatId = config.telegram.groupProductionChatId;
   if (!chatId) return;
-  if (await dealHeldForDocs(dealId)) return;
 
   const snapIn = await prisma.deal.findUnique({
     where: { id: dealId },
@@ -1441,7 +1396,7 @@ export async function syncDealTelegramGroupMessages(
   dealId: string,
   opts?: SyncDealTelegramOpts,
 ): Promise<void> {
-  if (!(await dealHeldForDocs(dealId))) await migrateProductionMessageToRfsIfNeeded(dealId);
+  await migrateProductionMessageToRfsIfNeeded(dealId);
 
   const deal = await loadDealForTelegramSync(dealId);
 
@@ -1491,10 +1446,6 @@ export async function syncDealTelegramGroupMessages(
     }
   }
 
-  // Сделка на перечисление без документов: новых постов в производство/отгрузку не шлём,
-  // но уже отправленные не удаляем — правим на месте (в них строка «документы ещё не готовы»).
-  const held = isHeldForDocs(deal);
-
   const chatPr = config.telegram.groupProductionChatId;
   if (chatPr && deal.productionIntakeTelegramMessageId) {
     const mid = parseStoredTelegramMessageId(deal.productionIntakeTelegramMessageId);
@@ -1522,7 +1473,7 @@ export async function syncDealTelegramGroupMessages(
   const chatProd = resolveProductionBoardChatId(deal) || config.telegram.groupProductionChatId?.trim();
   let dealForProduction = deal;
 
-  if (!held && chatProd && !deal.productionTelegramMessageId?.trim()) {
+  if (chatProd && !deal.productionTelegramMessageId?.trim()) {
     // Если сообщение не было создано на ранних этапах (например, дилно-зависимый маршрут),
     // создаем его здесь, чтобы последующие платежи/комментарии могли делать edit.
     if (deal.status === 'IN_PROGRESS') {
@@ -1541,7 +1492,7 @@ export async function syncDealTelegramGroupMessages(
 
   if (
     chatProd &&
-    (dealForProduction.productionTelegramMessageId?.trim() || (!held && opts?.footnote?.trim()))
+    (dealForProduction.productionTelegramMessageId?.trim() || opts?.footnote?.trim())
   ) {
     await syncProductionBoardMessage(dealId, dealForProduction, opts?.footnote, repost);
   }
@@ -1552,9 +1503,6 @@ export async function syncDealTelegramGroupMessages(
  * При неудаче правки — удаляем старое и шлём одно новое (без «второго» лишнего поста в типичном сценарии).
  */
 export async function sendProductionPaymentSubmitTelegram(dealId: string): Promise<void> {
-  // Задержана до документов: не шлём новый пост и не переносим в отгрузку.
-  // Уже отправленный пост остаётся, его правит syncDealTelegramGroupMessages.
-  if (await dealHeldForDocs(dealId)) return;
   await migrateProductionMessageToRfsIfNeeded(dealId);
 
   const prodChat = config.telegram.groupProductionChatId?.trim();
@@ -1712,6 +1660,41 @@ export async function trySendAdminApprovalTelegram(dealId: string): Promise<void
       telegramService.sendHtmlMessageWithKeyboard(chatId.trim(), body, keyboard, path),
     ),
   );
+}
+
+/**
+ * Разовый догон: с 09.11.2026 11:30 до 11.11.2026 сделки на перечисление без отметки
+ * «Документы готовы» не отправлялись в группу производства. Теперь они идут туда сразу —
+ * досылаем тем, у кого поста в группе так и нет. Повторный запуск ничего не дублирует:
+ * берём только сделки без поста, а отправка сама проверяет флаги.
+ */
+export async function catchUpTransferDealsMissedInGroups(): Promise<number> {
+  if (!config.telegram.groupProductionChatId?.trim()) return 0;
+  const deals = await prisma.deal.findMany({
+    where: {
+      paymentMethod: 'TRANSFER',
+      createdAt: { gte: new Date('2026-11-09T06:30:00.000Z'), lt: new Date('2026-11-12T00:00:00.000Z') },
+      isArchived: false,
+      status: { notIn: ['CANCELED', 'REJECTED', 'CLOSED'] },
+      productionTelegramMessageId: null,
+      productionIntakeTelegramMessageId: null,
+    },
+    select: { id: true, status: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  for (const deal of deals) {
+    try {
+      if (deal.status === 'WAITING_STOCK_CONFIRMATION') {
+        await trySendProductionIntakeTelegram(deal.id);
+      } else {
+        await syncDealTelegramGroupMessages(deal.id);
+      }
+    } catch (err) {
+      console.error('[Telegram deal groups] catch-up transfer deal failed dealId=', deal.id, err);
+    }
+  }
+  if (deals.length) console.log(`[Telegram deal groups] catch-up: досланы сделки на перечисление: ${deals.length}`);
+  return deals.length;
 }
 
 /** После создания сделки */
