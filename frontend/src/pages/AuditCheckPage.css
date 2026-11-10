@@ -1,7 +1,276 @@
-/* theme-variables.css forces `.ant-card { background/border !important }` globally,
-   which silently defeats any inline style attempt to tint a checked deal card.
-   A more specific selector (still !important) is required to win the cascade. */
-.ant-card.audit-checked-card {
-  background: var(--audit-checked-bg) !important;
-  border-color: var(--audit-checked-border) !important;
+/* Аудит сделок. Токены нового дизайна, в классике — antd. */
+.audit-page {
+  --au-text-1: var(--c-text-1, var(--ant-color-text));
+  --au-text-3: var(--c-text-3, var(--ant-color-text-tertiary));
+  --au-hair: var(--c-hairline, var(--ant-color-border-secondary));
+  --au-fill: var(--fill-1, var(--ant-color-fill-quaternary));
+  --au-pos: var(--c-pos-fg, var(--ant-color-success));
+  --au-neg: var(--c-neg-fg, var(--ant-color-error));
+  padding-bottom: 24px;
+  color: var(--au-text-1);
+}
+
+.audit-muted {
+  color: var(--au-text-3);
+}
+
+.audit-neg {
+  color: var(--au-neg);
+}
+
+.audit-pos {
+  color: var(--au-pos);
+}
+
+.audit-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Шапка: липкая, с плотной заливкой — карточки не просвечивают */
+.audit-head {
+  position: sticky;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 -4px 12px;
+  padding: 4px 4px 12px;
+  border-bottom: 1px solid var(--au-hair);
+  background: var(--table-solid, var(--ant-color-bg-layout));
+}
+
+/* В новом дизайне шапка — во всю ширину окна, от края до края */
+html[data-design='modern'] .audit-head {
+  margin: -12px -28px 12px;
+  padding: 12px 28px 12px;
+}
+
+.audit-head__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.audit-head__date {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.audit-head__search {
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+}
+
+.audit-head__stats {
+  font-size: 13px;
+  color: var(--au-text-3);
+}
+
+.audit-head__stats b {
+  font-weight: 650;
+  color: var(--au-text-1);
+}
+
+.audit-head__stats .audit-neg b {
+  color: var(--au-neg);
+}
+
+.audit-head__progress {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 240px;
+  white-space: nowrap;
+}
+
+/* Карточка сделки */
+.audit-list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.audit-card {
+  border: 1px solid var(--au-hair);
+  border-radius: 14px;
+  background: var(--panel-bg, var(--ant-color-bg-container));
+}
+
+.audit-card.is-checked {
+  border-color: color-mix(in srgb, var(--au-pos) 55%, transparent);
+  background: color-mix(in srgb, var(--au-pos) 7%, var(--panel-bg, var(--ant-color-bg-container)));
+}
+
+.audit-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.audit-card__title {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.audit-card__title b {
+  font-variant-numeric: tabular-nums;
+}
+
+.audit-card__actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.audit-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px 12px 12px 38px;
+}
+
+.audit-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+  font-size: 13px;
+}
+
+.audit-fact__label {
+  margin-right: 6px;
+  color: var(--au-text-3);
+}
+
+.audit-facts--shipment {
+  padding-top: 10px;
+  border-top: 1px solid var(--au-hair);
+}
+
+.audit-lists {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 12px;
+}
+
+.audit-list {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--au-fill);
+  font-size: 13px;
+}
+
+.audit-list__title {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--au-text-3);
+}
+
+.audit-row {
+  display: grid;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+}
+
+.audit-row + .audit-row {
+  border-top: 1px solid var(--au-hair);
+}
+
+.audit-row--item {
+  grid-template-columns: minmax(0, 1fr) auto auto 120px;
+}
+
+.audit-row--pay {
+  grid-template-columns: 110px minmax(0, 1fr) auto;
+}
+
+.audit-row--total {
+  grid-template-columns: minmax(0, 1fr) auto;
+  font-weight: 650;
+}
+
+.audit-row__name small,
+.audit-row--pay small {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--au-text-3);
+}
+
+@media (max-width: 767px) {
+  /* На телефоне шапка высокая — не прилипает и без подложки, чтобы не съедать экран */
+  .audit-head,
+  html[data-design='modern'] .audit-head {
+    position: static;
+    margin: 0 0 12px;
+    padding: 0 0 12px;
+    background: none;
+  }
+
+  .audit-card__head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .audit-card__title {
+    flex-basis: calc(100% - 40px);
+  }
+
+  .audit-card__actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .audit-head__search {
+    max-width: none;
+  }
+
+  .audit-head__progress {
+    min-width: 100%;
+  }
+
+  .audit-card__body {
+    padding-left: 12px;
+  }
+
+  .audit-lists {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .audit-row--item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .audit-row--item .audit-row__name {
+    grid-column: 1 / -1;
+  }
+
+  .audit-row--pay {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .audit-row--pay > :nth-child(2) {
+    grid-column: 1;
+    grid-row: 2;
+  }
 }
