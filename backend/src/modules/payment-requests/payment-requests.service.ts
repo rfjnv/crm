@@ -10,6 +10,7 @@ import { pushService } from '../push/push.service';
 import { telegramService } from '../telegram/telegram.service';
 import { MAX_PAYMENT_AMOUNT } from '../deals/deals.dto';
 import { recordPaidChanges } from '../accounting-changes/accounting-changes.service';
+import { setDealDocsReady } from '../deals/deals.docs-ready';
 import { postPaymentRequestToGroup, updatePaymentRequestPost } from './payment-requests.telegram';
 import { planAllocation, toCents, type AllocationSource, type PlanDeal } from './payment-requests.plan';
 
@@ -250,6 +251,28 @@ async function announceCreated(created: RequestRow, scopeText: string, user: Aut
     user.userId,
   ).catch((err) => console.error('[payment-requests] notify:', err));
   void postPaymentRequestToGroup(created.id).catch((err) => console.error('[payment-requests] group post:', err));
+}
+
+/**
+ * Документы по заявке на перечисление готовы — значит, готовы и по её сделкам. Сделка на
+ * перечисление ждёт отметки «Документы готовы» до групп производства и отгрузки, а отметка
+ * в заявке её раньше не снимала: сделка так и не попадала в группу. Ставим отметку сделкам,
+ * на которые ляжет оплата (по сделке — на неё саму), и отправляем их в группы.
+ */
+async function markRequestDealsDocsReady(request: RequestRow, user: AuthUser) {
+  const dealIds = request.dealId
+    ? [request.dealId]
+    : [...new Set((await loadPlan(prisma, request)).plan.allocations.map((a) => a.dealId))];
+  if (dealIds.length === 0) return;
+  const deals = await prisma.deal.findMany({
+    where: { id: { in: dealIds }, paymentMethod: 'TRANSFER', docsReadyAt: null },
+    select: { id: true },
+  });
+  for (const deal of deals) {
+    await setDealDocsReady(deal.id, true, user).catch((err) =>
+      console.error('[payment-requests] deal docs-ready:', deal.id, err),
+    );
+  }
 }
 
 const refreshGroupPost = (id: string) =>
@@ -692,6 +715,9 @@ export const paymentRequestsService = {
       `${request.client.companyName}: ждём оплату ${moneyText(money(request.amount))} сум`,
       user.userId,
     ).catch((err) => console.error('[payment-requests] notify:', err));
+    void markRequestDealsDocsReady(request, user).catch((err) =>
+      console.error('[payment-requests] deals docs-ready:', err),
+    );
     refreshGroupPost(id);
     return present(request);
   },

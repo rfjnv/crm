@@ -619,39 +619,6 @@ async function dealHeldForDocs(dealId: string): Promise<boolean> {
   return !!row && isHeldForDocs(row);
 }
 
-/** Снять уже отправленные посты производства/отгрузки, если сделку задержали до документов. */
-async function withdrawHeldProductionPosts(dealId: string): Promise<void> {
-  const row = await prisma.deal.findUnique({
-    where: { id: dealId },
-    select: {
-      status: true,
-      productionTelegramMessageId: true,
-      productionTelegramMessageInRfsChat: true,
-      productionIntakeTelegramMessageId: true,
-    },
-  });
-  if (!row) return;
-  const prod = config.telegram.groupProductionChatId?.trim();
-  const mid = parseStoredTelegramMessageId(row.productionTelegramMessageId);
-  const chat = resolveProductionBoardChatId(row);
-  if (mid != null && chat) await telegramService.deleteGroupMessage(chat, mid);
-  const intakeMid = parseStoredTelegramMessageId(row.productionIntakeTelegramMessageId);
-  if (intakeMid != null && prod) await telegramService.deleteGroupMessage(prod, intakeMid);
-  if (mid == null && intakeMid == null) return;
-  await prisma.deal
-    .update({
-      where: { id: dealId },
-      data: {
-        productionTelegramMessageId: null,
-        productionTelegramMessageInRfsChat: false,
-        sentToProduction: false,
-        productionIntakeTelegramMessageId: null,
-        sentProductionIntakeTg: false,
-      },
-    })
-    .catch((err) => console.error('[Telegram deal groups] withdraw held posts:', err));
-}
-
 /**
  * Бухгалтерия отметила документы: отправить задержанную сделку в группу производства
  * (или сразу в отгрузку — по статусу) и обновить остальные посты.
@@ -851,10 +818,9 @@ export async function trySendWarehouseTelegram(dealId: string): Promise<void> {
 export async function trySendProductionTelegram(dealId: string): Promise<void> {
   const chatId = config.telegram.groupProductionChatId;
   if (!chatId) return;
-  if (await dealHeldForDocs(dealId)) {
-    await withdrawHeldProductionPosts(dealId);
-    return;
-  }
+  // Задержана до документов: новый пост не шлём. Уже отправленный пост не удаляем —
+  // его обновляет syncDealTelegramGroupMessages, со строкой «документы ещё не готовы».
+  if (await dealHeldForDocs(dealId)) return;
 
   const deal = await prisma.deal.findUnique({
     where: { id: dealId },
@@ -1475,7 +1441,7 @@ export async function syncDealTelegramGroupMessages(
   dealId: string,
   opts?: SyncDealTelegramOpts,
 ): Promise<void> {
-  await migrateProductionMessageToRfsIfNeeded(dealId);
+  if (!(await dealHeldForDocs(dealId))) await migrateProductionMessageToRfsIfNeeded(dealId);
 
   const deal = await loadDealForTelegramSync(dealId);
 
@@ -1525,11 +1491,12 @@ export async function syncDealTelegramGroupMessages(
     }
   }
 
+  // Сделка на перечисление без документов: новых постов в производство/отгрузку не шлём,
+  // но уже отправленные не удаляем — правим на месте (в них строка «документы ещё не готовы»).
   const held = isHeldForDocs(deal);
-  if (held) await withdrawHeldProductionPosts(dealId);
 
   const chatPr = config.telegram.groupProductionChatId;
-  if (!held && chatPr && deal.productionIntakeTelegramMessageId) {
+  if (chatPr && deal.productionIntakeTelegramMessageId) {
     const mid = parseStoredTelegramMessageId(deal.productionIntakeTelegramMessageId);
     if (mid != null) {
       const html = appendSyncFootnote(buildProductionIntakeTelegramHtml(deal), opts?.footnote);
@@ -1552,12 +1519,10 @@ export async function syncDealTelegramGroupMessages(
     }
   }
 
-  if (held) return;
-
   const chatProd = resolveProductionBoardChatId(deal) || config.telegram.groupProductionChatId?.trim();
   let dealForProduction = deal;
 
-  if (chatProd && !deal.productionTelegramMessageId?.trim()) {
+  if (!held && chatProd && !deal.productionTelegramMessageId?.trim()) {
     // Если сообщение не было создано на ранних этапах (например, дилно-зависимый маршрут),
     // создаем его здесь, чтобы последующие платежи/комментарии могли делать edit.
     if (deal.status === 'IN_PROGRESS') {
@@ -1576,7 +1541,7 @@ export async function syncDealTelegramGroupMessages(
 
   if (
     chatProd &&
-    (dealForProduction.productionTelegramMessageId?.trim() || opts?.footnote?.trim())
+    (dealForProduction.productionTelegramMessageId?.trim() || (!held && opts?.footnote?.trim()))
   ) {
     await syncProductionBoardMessage(dealId, dealForProduction, opts?.footnote, repost);
   }
@@ -1587,10 +1552,9 @@ export async function syncDealTelegramGroupMessages(
  * При неудаче правки — удаляем старое и шлём одно новое (без «второго» лишнего поста в типичном сценарии).
  */
 export async function sendProductionPaymentSubmitTelegram(dealId: string): Promise<void> {
-  if (await dealHeldForDocs(dealId)) {
-    await withdrawHeldProductionPosts(dealId);
-    return;
-  }
+  // Задержана до документов: не шлём новый пост и не переносим в отгрузку.
+  // Уже отправленный пост остаётся, его правит syncDealTelegramGroupMessages.
+  if (await dealHeldForDocs(dealId)) return;
   await migrateProductionMessageToRfsIfNeeded(dealId);
 
   const prodChat = config.telegram.groupProductionChatId?.trim();
