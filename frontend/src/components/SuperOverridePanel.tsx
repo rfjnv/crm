@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
   Tabs, Form, Input, InputNumber, Select, DatePicker, Button, Alert,
-  Typography, Popconfirm, message, theme, Tooltip,
+  Typography, Popconfirm, message, Tooltip, Switch,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -16,6 +16,7 @@ import { ClientCompanyDisplay } from './ClientCompanyDisplay';
 import type { Deal, Product, DealStatus, User, PaymentRecord, DealComment } from '../types';
 import { getFirstName } from '../lib/name-utils';
 import dayjs from 'dayjs';
+import './SuperOverridePanel.css';
 
 const ALL_STATUSES: DealStatus[] = [
   'NEW', 'WAITING_STOCK_CONFIRMATION', 'STOCK_CONFIRMED', 'IN_PROGRESS',
@@ -26,10 +27,23 @@ const ALL_STATUSES: DealStatus[] = [
   'CLOSED', 'CANCELED', 'REJECTED',
 ];
 
-/** Above this row count, only the table body scrolls (70vh); summary and actions stay outside. */
-const PRODUCTS_TABLE_SCROLL_AFTER_ROWS = 10;
+const PAYMENT_METHOD_OPTIONS = [
+  { label: 'Наличные', value: 'CASH' },
+  { label: 'Payme', value: 'PAYME' },
+  { label: 'QR', value: 'QR' },
+  { label: 'Click', value: 'CLICK' },
+  { label: 'Терминал', value: 'TERMINAL' },
+  { label: 'Перечисление', value: 'TRANSFER' },
+  { label: 'Рассрочка', value: 'INSTALLMENT' },
+  { label: 'Долг', value: 'DEBT' },
+];
+const PAYMENT_METHOD_LABELS: Record<string, string> = Object.fromEntries(PAYMENT_METHOD_OPTIONS.map((o) => [o.value, o.label]));
 
-const productsCellPad = '8px 10px';
+const ROLE_LABELS: Record<string, string> = {
+  SUPER_ADMIN: 'суперадмин', ADMIN: 'админ', MANAGER: 'менеджер', ACCOUNTANT: 'бухгалтер',
+  WAREHOUSE: 'склад', WAREHOUSE_MANAGER: 'зав. склада', OPERATOR: 'оператор',
+  DRIVER: 'водитель', LOADER: 'грузчик', HR: 'HR',
+};
 
 export interface SuperOverridePanelProps {
   deal: Deal;
@@ -39,6 +53,8 @@ export interface SuperOverridePanelProps {
   clients: { id: string; companyName: string; contactName?: string | null; phone?: string | null; isSvip?: boolean }[];
   onCancel: () => void;
   onSuccess: () => void;
+  /** «modal» — кнопки прилипают к низу окна; «page» — к низу экрана поверх страницы */
+  variant?: 'modal' | 'page';
 }
 
 interface OverrideItem {
@@ -79,6 +95,7 @@ export default function SuperOverridePanel({
   clients,
   onCancel,
   onSuccess,
+  variant = 'page',
 }: SuperOverridePanelProps) {
   const [form] = Form.useForm();
   const [shipmentForm] = Form.useForm();
@@ -88,8 +105,9 @@ export default function SuperOverridePanel({
   const [commentDates, setCommentDates] = useState<OverrideComment[]>([]);
   const [editItems, setEditItems] = useState(false);
   const [editShipment, setEditShipment] = useState(false);
+  const [showItemDates, setShowItemDates] = useState(false);
+  const [reasonTouched, setReasonTouched] = useState(false);
   const queryClient = useQueryClient();
-  const { token: tk } = theme.useToken();
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -177,7 +195,7 @@ export default function SuperOverridePanel({
   const overrideMut = useMutation({
     mutationFn: (data: OverrideDealData) => adminApi.overrideDeal(deal.id, data),
     onSuccess: () => {
-      message.success('Сделка обновлена (SUPER OVERRIDE)');
+      message.success('Сделка обновлена');
       queryClient.invalidateQueries({ queryKey: ['deal', deal.id] });
       queryClient.invalidateQueries({ queryKey: ['deals'] });
       onSuccess();
@@ -190,6 +208,7 @@ export default function SuperOverridePanel({
 
   function handleSubmit() {
     if (reason.trim().length < 3) {
+      setReasonTouched(true);
       message.error('Укажите причину изменения (мин. 3 символа)');
       return;
     }
@@ -361,201 +380,174 @@ export default function SuperOverridePanel({
     items.reduce((s, i) => s + (i.requestedQty || 0) * (i.price || 0), 0),
     [items]);
 
-  const manyProductRows = items.length > PRODUCTS_TABLE_SCROLL_AFTER_ROWS;
-
-  function renderProductsTable() {
-    return (
-      <table
-        style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          tableLayout: 'auto',
-        }}
-      >
-        <thead>
-          <tr style={{ textAlign: 'left', borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
-            <th style={{ padding: productsCellPad, fontSize: 13, width: '32%', minWidth: 180 }}>Товар</th>
-            <th style={{ padding: productsCellPad, fontSize: 13, width: 88 }}>Кол-во</th>
-            <th style={{ padding: productsCellPad, fontSize: 13, width: 88 }}>Рулоны</th>
-            <th style={{ padding: productsCellPad, fontSize: 13, width: 128 }}>Цена</th>
-            <th style={{ padding: productsCellPad, fontSize: 13, width: 120 }}>Сумма</th>
-            <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Deal Date</th>
-            <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Confirmed At</th>
-            <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Item Created</th>
-            <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Отгружено</th>
-            <th style={{ padding: productsCellPad, fontSize: 13, minWidth: 152 }}>Доставлено</th>
-            <th style={{ padding: productsCellPad, width: 40 }} />
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => {
-            const lineTotal = (item.requestedQty || 0) * (item.price || 0);
-            return (
-              <tr key={item.key} style={{ borderBottom: `1px solid ${tk.colorBorderSecondary}` }}>
-                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
-                  <Select
-                    showSearch
-                    filterOption={smartFilterOption}
-                    placeholder="Товар"
-                    style={{ width: '100%', minWidth: 160 }}
-                    value={item.productId || undefined}
-                    onChange={(v) => {
-                      const p = productMap.get(v);
-                      updateItem(item.key, {
-                        productId: v,
-                        price: p?.salePrice ? Number(p.salePrice) : item.price,
-                      });
-                    }}
-                    options={(products ?? []).filter((p) => p.isActive).map((p) => ({
-                      label: `${p.name} (${p.sku})`,
-                      value: p.id,
-                    }))}
-                  />
-                </td>
-                <td style={{ padding: productsCellPad, verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                  <InputNumber
-                    min={0.001}
-                    step={1}
-                    styles={{
-                      root: { width: 80, minWidth: 70, maxWidth: 90 },
-                      input: { paddingInline: 8 },
-                    }}
-                    value={item.requestedQty}
-                    onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
-                  />
-                </td>
-                <td style={{ padding: productsCellPad, verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                  <InputNumber
-                    min={0}
-                    step={1}
-                    styles={{
-                      root: { width: 80, minWidth: 70, maxWidth: 90 },
-                      input: { paddingInline: 8 },
-                    }}
-                    value={item.rollCount}
-                    onChange={(v) => updateItem(item.key, { rollCount: v ?? undefined })}
-                  />
-                </td>
-                <td style={{ padding: productsCellPad, verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                  <InputNumber
-                    min={0}
-                    styles={{
-                      root: { width: 120, minWidth: 100, maxWidth: 140 },
-                      input: { paddingInline: 8 },
-                    }}
-                    formatter={moneyFormatter}
-                    parser={(v) => moneyParser(v) as unknown as number}
-                    value={item.price}
-                    onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
-                  />
-                </td>
-                <td style={{ padding: productsCellPad, whiteSpace: 'nowrap', verticalAlign: 'middle', fontVariantNumeric: 'tabular-nums' }}>
-                  {lineTotal > 0 ? formatUZS(lineTotal) : '—'}
-                </td>
-                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
-                  <DatePicker
-                    showTime
-                    style={{ width: '100%', minWidth: 148 }}
-                    format="DD.MM.YYYY HH:mm"
-                    value={item.dealDate}
-                    onChange={(v) => updateItem(item.key, { dealDate: v ?? undefined })}
-                  />
-                </td>
-                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
-                  <DatePicker
-                    showTime
-                    style={{ width: '100%', minWidth: 148 }}
-                    format="DD.MM.YYYY HH:mm"
-                    value={item.confirmedAt}
-                    onChange={(v) => updateItem(item.key, { confirmedAt: v ?? undefined })}
-                  />
-                </td>
-                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
-                  <DatePicker
-                    showTime
-                    style={{ width: '100%', minWidth: 148 }}
-                    format="DD.MM.YYYY HH:mm"
-                    value={item.createdAt}
-                    onChange={(v) => updateItem(item.key, { createdAt: v ?? undefined })}
-                  />
-                </td>
-                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
-                  <DatePicker
-                    showTime
-                    style={{ width: '100%', minWidth: 148 }}
-                    format="DD.MM.YYYY HH:mm"
-                    value={item.shippedAt}
-                    onChange={(v) => updateItem(item.key, { shippedAt: v ?? undefined })}
-                  />
-                </td>
-                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
-                  <DatePicker
-                    showTime
-                    style={{ width: '100%', minWidth: 148 }}
-                    format="DD.MM.YYYY HH:mm"
-                    value={item.deliveredAt}
-                    onChange={(v) => updateItem(item.key, { deliveredAt: v ?? undefined })}
-                  />
-                </td>
-                <td style={{ padding: productsCellPad, verticalAlign: 'middle' }}>
-                  <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeItem(item.key)} />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    );
-  }
-
   const footerBottomPad = isMobile ? mobileMainContentBottomPadding() : 12;
 
-  return (
+  const itemDateFields: { key: 'dealDate' | 'confirmedAt' | 'createdAt' | 'shippedAt' | 'deliveredAt'; label: string; hint: string }[] = [
+    { key: 'dealDate', label: 'Дата строки', hint: 'По ней строка попадает в выручку и отчёты' },
+    { key: 'confirmedAt', label: 'Подтверждено складом', hint: 'Когда склад подтвердил наличие' },
+    { key: 'createdAt', label: 'Добавлено в сделку', hint: 'Когда строку создали' },
+    { key: 'shippedAt', label: 'Отгружено', hint: 'Когда товар отгрузили' },
+    { key: 'deliveredAt', label: 'Доставлено', hint: 'Когда товар доставили' },
+  ];
+
+  const dateInput = (value: dayjs.Dayjs | undefined, onChange: (v: dayjs.Dayjs | undefined) => void, allowClear = true) => (
+    <DatePicker
+      showTime
+      allowClear={allowClear}
+      style={{ width: '100%' }}
+      format="DD.MM.YYYY HH:mm"
+      value={value}
+      onChange={(v) => onChange(v ?? undefined)}
+    />
+  );
+
+  const userOptions = (roles?: string[]) => (users ?? [])
+    .filter((u) => u.isActive && (!roles || roles.includes(u.role)))
+    .map((u) => ({ label: roles?.length === 1 ? getFirstName(u.fullName) : `${getFirstName(u.fullName)} · ${ROLE_LABELS[u.role] ?? u.role}`, value: u.id }));
+
+  const itemsTab = !editItems ? (
+    <div className="so-empty">
+      <Typography.Text type="secondary">
+        Сохранение товаров полностью заменит текущий список позиций сделки.
+      </Typography.Text>
+      <Button type="primary" onClick={() => setEditItems(true)}>
+        Редактировать товары
+      </Button>
+    </div>
+  ) : (
     <>
+      <div className="so-items-bar">
+        <label className="so-switch">
+          <Switch size="small" checked={showItemDates} onChange={setShowItemDates} />
+          Даты по строкам
+        </label>
+        <span className="so-items-total">Итого: <b>{formatUZS(itemsTotal)}</b></span>
+      </div>
+      {!isMobile && (
+        <div className="so-item-grid so-item-grid--head">
+          <span>Товар</span>
+          <span>Кол-во</span>
+          <span>Рулоны</span>
+          <span>Цена</span>
+          <span className="so-num">Сумма</span>
+          <span />
+        </div>
+      )}
+      {items.map((item) => {
+        const lineTotal = (item.requestedQty || 0) * (item.price || 0);
+        return (
+          <div key={item.key} className="so-item">
+            <div className="so-item-grid">
+              <Select
+                showSearch
+                filterOption={smartFilterOption}
+                placeholder="Товар"
+                className="so-item__product"
+                value={item.productId || undefined}
+                onChange={(v) => {
+                  const p = productMap.get(v);
+                  updateItem(item.key, {
+                    productId: v,
+                    price: p?.salePrice ? Number(p.salePrice) : item.price,
+                  });
+                }}
+                options={(products ?? []).filter((p) => p.isActive).map((p) => ({
+                  label: `${p.name} (${p.sku})`,
+                  value: p.id,
+                }))}
+              />
+              <InputNumber
+                min={0.001}
+                step={1}
+                placeholder={isMobile ? 'Кол-во' : undefined}
+                style={{ width: '100%' }}
+                value={item.requestedQty}
+                onChange={(v) => updateItem(item.key, { requestedQty: v ?? undefined })}
+              />
+              <InputNumber
+                min={0}
+                step={1}
+                placeholder={isMobile ? 'Рулоны' : '—'}
+                style={{ width: '100%' }}
+                value={item.rollCount}
+                onChange={(v) => updateItem(item.key, { rollCount: v ?? undefined })}
+              />
+              <InputNumber
+                min={0}
+                placeholder={isMobile ? 'Цена' : undefined}
+                style={{ width: '100%' }}
+                formatter={moneyFormatter}
+                parser={(v) => moneyParser(v) as unknown as number}
+                value={item.price}
+                onChange={(v) => updateItem(item.key, { price: v ?? undefined })}
+              />
+              <span className="so-num so-item__sum">{lineTotal > 0 ? formatUZS(lineTotal) : '—'}</span>
+              <Button type="text" danger icon={<DeleteOutlined />} onClick={() => removeItem(item.key)} aria-label="Удалить строку" />
+            </div>
+            {showItemDates && (
+              <div className="so-item-dates">
+                {itemDateFields.map((f) => (
+                  <div key={f.key}>
+                    <Tooltip title={f.hint}><span className="so-label">{f.label}</span></Tooltip>
+                    {dateInput(item[f.key], (v) => updateItem(item.key, { [f.key]: v }))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <Button type="dashed" block icon={<PlusOutlined />} onClick={addItem} style={{ marginTop: 10 }}>
+        Добавить товар
+      </Button>
+    </>
+  );
+
+  const footer = (
+    <div className={`so-footer so-footer--${variant}`} style={variant === 'page' ? { paddingBottom: footerBottomPad } : undefined}>
+      <Input
+        className="so-footer__reason"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Причина изменения — обязательно, попадёт в аудит"
+        status={reasonTouched && reason.trim().length < 3 ? 'error' : undefined}
+      />
+      <div className="so-footer__actions">
+        <Button onClick={onCancel}>Отмена</Button>
+        <Popconfirm
+          title="Применить изменения?"
+          description="Они обойдут обычный порядок работы и будут записаны в аудит."
+          okText="Применить"
+          cancelText="Нет"
+          onConfirm={handleSubmit}
+        >
+          <Button type="primary" danger loading={overrideMut.isPending}>
+            Применить
+          </Button>
+        </Popconfirm>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={`so-panel so-panel--${variant}`}>
       <Alert
         type="warning"
         showIcon
-        message="Режим суперредактирования"
-        description="Все изменения будут записаны в аудит с указанием причины. Это действие обходит стандартный workflow."
-        style={{ marginBottom: 16, padding: '10px 14px' }}
+        className="so-alert"
+        message="Изменения обходят обычный порядок работы со сделкой и записываются в аудит вместе с причиной."
       />
 
-      <div style={{ marginBottom: 20 }}>
-        <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>Причина изменения *</Typography.Text>
-        <Input.TextArea
-          rows={2}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="Укажите причину override (обязательно, мин. 3 символа)..."
-          status={reason.length > 0 && reason.length < 3 ? 'error' : undefined}
-        />
-      </div>
-
       <Tabs
-        style={{ marginBottom: 24 }}
+        className="so-tabs"
         items={[
           {
             key: 'basic',
             label: 'Основное',
+            forceRender: true,
             children: (
-              <Form form={form} layout="vertical">
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
-                  <Form.Item name="createdAt" label="Дата создания сделки">
-                    <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
-                  </Form.Item>
-                  <Form.Item
-                    name="closedAt"
-                    label={
-                      <span>
-                        Дата закрытия / доставки
-                        <Tooltip title="Момент статуса «Закрыто» (доставка клиенту). Не путать с датами по строкам в таблице товаров.">
-                          <InfoCircleOutlined style={{ marginLeft: 6, fontSize: 12, opacity: 0.45 }} />
-                        </Tooltip>
-                      </span>
-                    }
-                  >
-                    <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" allowClear />
-                  </Form.Item>
+              <Form form={form} layout="vertical" className="so-form">
+                <div className="so-grid">
                   <Form.Item name="title" label="Название">
                     <Input />
                   </Form.Item>
@@ -583,35 +575,23 @@ export default function SuperOverridePanel({
                     />
                   </Form.Item>
                   <Form.Item name="managerId" label="Менеджер">
-                    <Select showSearch filterOption={smartFilterOption}
-                      options={(users ?? []).filter((u) => u.isActive).map((u) => ({ label: `${getFirstName(u.fullName)} (${u.role})`, value: u.id }))}
-                    />
+                    <Select showSearch filterOption={smartFilterOption} options={userOptions()} />
                   </Form.Item>
-                  <Form.Item name="deliveryType" label="Тип доставки">
-                    <Select allowClear placeholder="Не указан" options={[
-                      { label: 'Самовывоз', value: 'SELF_PICKUP' },
-                      { label: 'Яндекс', value: 'YANDEX' },
-                      { label: 'Доставка', value: 'DELIVERY' },
-                    ]} />
+                  <Form.Item name="createdAt" label="Дата создания сделки">
+                    <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
                   </Form.Item>
-                  <Form.Item name="vehicleNumber" label="Номер машины">
-                    <Input placeholder="01 A 123 AA" />
-                  </Form.Item>
-                  <Form.Item name="vehicleType" label="Тип машины">
-                    <Input placeholder="Газель, Фура..." />
-                  </Form.Item>
-                  <Form.Item name="deliveryComment" label="Комментарий доставки">
-                    <Input placeholder="Комментарий..." />
-                  </Form.Item>
-                  <Form.Item name="loadingAssigneeId" label="Грузил (исполнитель)">
-                    <Select allowClear showSearch filterOption={smartFilterOption} placeholder="Не назначен"
-                      options={(users ?? []).filter((u) => u.isActive && ['WAREHOUSE', 'DRIVER', 'LOADER'].includes(u.role)).map((u) => ({ label: `${getFirstName(u.fullName)} (${u.role})`, value: u.id }))}
-                    />
-                  </Form.Item>
-                  <Form.Item name="deliveryDriverId" label="Водитель доставки">
-                    <Select allowClear showSearch filterOption={smartFilterOption} placeholder="Не назначен"
-                      options={(users ?? []).filter((u) => u.isActive && u.role === 'DRIVER').map((u) => ({ label: getFirstName(u.fullName), value: u.id }))}
-                    />
+                  <Form.Item
+                    name="closedAt"
+                    label={
+                      <span>
+                        Дата закрытия
+                        <Tooltip title="Момент статуса «Закрыто» (доставка клиенту). Не путать с датами по строкам товаров.">
+                          <InfoCircleOutlined className="so-hint" />
+                        </Tooltip>
+                      </span>
+                    }
+                  >
+                    <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" allowClear />
                   </Form.Item>
                 </div>
               </Form>
@@ -620,240 +600,172 @@ export default function SuperOverridePanel({
           {
             key: 'items',
             label: `Товары (${items.length})`,
-            children: (
-              <div style={{ width: '100%' }}>
-                {!editItems ? (
-                  <div style={{ textAlign: 'center', padding: '24px 12px' }}>
-                    <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                      Редактирование товаров полностью заменит текущий список.
-                    </Typography.Text>
-                    <Button type="primary" onClick={() => setEditItems(true)}>
-                      Редактировать товары
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    {manyProductRows ? (
-                      <div
-                        style={{
-                          width: '100%',
-                          maxHeight: 'min(70dvh, 85vh)',
-                          overflow: 'auto',
-                          scrollbarGutter: 'stable',
-                        }}
-                      >
-                        {renderProductsTable()}
-                      </div>
-                    ) : (
-                      renderProductsTable()
-                    )}
-                    {itemsTotal > 0 && (
-                      <div
-                        style={{
-                          textAlign: 'right',
-                          padding: manyProductRows ? '8px 2px 6px' : '6px 2px 4px',
-                          marginTop: manyProductRows ? 0 : 4,
-                          borderTop: `1px solid ${tk.colorBorderSecondary}`,
-                          ...(manyProductRows ? { background: tk.colorBgContainer } : {}),
-                        }}
-                      >
-                        <Typography.Text strong>Итого: {formatUZS(itemsTotal)}</Typography.Text>
-                      </div>
-                    )}
-                    <Button type="dashed" block icon={<PlusOutlined />} onClick={addItem} style={{ marginTop: 8 }}>
-                      Добавить товар
-                    </Button>
-                  </>
-                )}
-              </div>
-            ),
+            children: itemsTab,
           },
           {
             key: 'payment',
-            label: 'Оплата',
+            label: `Оплата${paymentDates.length ? ` (${paymentDates.length})` : ''}`,
             forceRender: true,
             children: (
-              <Form form={form} layout="vertical">
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
-                  <Form.Item name="paymentMethod" label="Способ оплаты">
-                    <Select allowClear placeholder="Не указан" options={[
-                      { label: 'Наличные', value: 'CASH' },
-                      { label: 'Payme', value: 'PAYME' },
-                      { label: 'QR', value: 'QR' },
-                      { label: 'Click', value: 'CLICK' },
-                      { label: 'Терминал', value: 'TERMINAL' },
-                      { label: 'Перечисление', value: 'TRANSFER' },
-                      { label: 'Рассрочка', value: 'INSTALLMENT' },
-                      { label: 'Долг', value: 'DEBT' },
-                    ]} />
-                  </Form.Item>
-                  <Form.Item name="paymentType" label="Тип оплаты">
-                    <Select options={[
-                      { label: 'Полная', value: 'FULL' },
-                      { label: 'Частичная', value: 'PARTIAL' },
-                      { label: 'Рассрочка', value: 'INSTALLMENT' },
-                    ]} />
-                  </Form.Item>
-                  <Form.Item name="paidAmount" label="Оплачено">
-                    <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
-                  </Form.Item>
-                  <Form.Item name="discount" label="Скидка">
-                    <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
-                  </Form.Item>
-                  <Form.Item name="dueDate" label="Срок оплаты">
-                    <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
-                  </Form.Item>
-                </div>
-                <Form.Item name="terms" label="Условия">
-                  <Input.TextArea rows={2} placeholder="Условия оплаты..." />
-                </Form.Item>
-              </Form>
-            ),
-          },
-          {
-            key: 'payment-dates',
-            label: `Payment Dates (${paymentDates.length})`,
-            children: (
-              <div style={{ display: 'grid', gap: 16 }}>
-                {paymentDates.length === 0 ? (
-                  <Typography.Text type="secondary">No payments for this deal.</Typography.Text>
-                ) : paymentDates.map((payment) => {
-                  const original = payments.find((entry) => entry.id === payment.id);
-                  return (
-                    <div key={payment.id} style={{ border: `1px solid ${tk.colorBorderSecondary}`, borderRadius: 8, padding: 14 }}>
-                      <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
-                        {(original?.amount ? formatUZS(Number(original.amount)) : 'Payment')} {original?.method ? `• ${original.method}` : ''}
-                      </Typography.Text>
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
-                        <div>
-                          <Typography.Text type="secondary">Paid At</Typography.Text>
-                          <DatePicker
-                            showTime
-                            style={{ width: '100%', marginTop: 4 }}
-                            format="DD.MM.YYYY HH:mm"
-                            value={payment.paidAt}
-                            onChange={(v) => updatePaymentDate(payment.id, { paidAt: v ?? undefined })}
-                          />
-                        </div>
-                        <div>
-                          <Typography.Text type="secondary">Created At</Typography.Text>
-                          <DatePicker
-                            showTime
-                            style={{ width: '100%', marginTop: 4 }}
-                            format="DD.MM.YYYY HH:mm"
-                            value={payment.createdAt}
-                            onChange={(v) => updatePaymentDate(payment.id, { createdAt: v ?? undefined })}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ),
-          },
-          {
-            key: 'comment-dates',
-            label: `Comment Dates (${commentDates.length})`,
-            children: (
-              <div style={{ display: 'grid', gap: 16 }}>
-                {commentDates.length === 0 ? (
-                  <Typography.Text type="secondary">No comments for this deal.</Typography.Text>
-                ) : commentDates.map((comment) => (
-                  <div key={comment.id} style={{ border: `1px solid ${tk.colorBorderSecondary}`, borderRadius: 8, padding: 14 }}>
-                    <Typography.Text style={{ display: 'block', marginBottom: 8 }}>
-                      {comment.text || 'Комментарий'}
-                    </Typography.Text>
-                    <Typography.Text type="secondary">Created At</Typography.Text>
-                    <DatePicker
-                      showTime
-                      style={{ width: '100%', marginTop: 4 }}
-                      format="DD.MM.YYYY HH:mm"
-                      value={comment.createdAt}
-                      onChange={(v) => updateCommentDate(comment.id, { createdAt: v ?? undefined })}
-                    />
+              <>
+                <Form form={form} layout="vertical" className="so-form">
+                  <div className="so-grid">
+                    <Form.Item name="paymentMethod" label="Способ оплаты">
+                      <Select allowClear placeholder="Не указан" options={PAYMENT_METHOD_OPTIONS} />
+                    </Form.Item>
+                    <Form.Item name="paymentType" label="Тип оплаты">
+                      <Select options={[
+                        { label: 'Полная', value: 'FULL' },
+                        { label: 'Частичная', value: 'PARTIAL' },
+                        { label: 'Рассрочка', value: 'INSTALLMENT' },
+                      ]} />
+                    </Form.Item>
+                    <Form.Item name="paidAmount" label="Оплачено">
+                      <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
+                    </Form.Item>
+                    <Form.Item name="discount" label="Скидка">
+                      <InputNumber style={{ width: '100%' }} min={0} formatter={moneyFormatter} parser={moneyParser} />
+                    </Form.Item>
+                    <Form.Item name="dueDate" label="Срок оплаты">
+                      <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
+                    </Form.Item>
+                    <Form.Item name="terms" label="Условия">
+                      <Input placeholder="Условия оплаты..." />
+                    </Form.Item>
                   </div>
-                ))}
-              </div>
+                </Form>
+
+                <div className="so-section">Даты оплат</div>
+                {paymentDates.length === 0 ? (
+                  <Typography.Text type="secondary">По сделке оплат нет.</Typography.Text>
+                ) : (
+                  <div className="so-rows">
+                    {paymentDates.map((payment) => {
+                      const original = payments.find((entry) => entry.id === payment.id);
+                      return (
+                        <div key={payment.id} className="so-row">
+                          <div className="so-row__title">
+                            <b>{original?.amount ? formatUZS(Number(original.amount)) : 'Оплата'}</b>
+                            {original?.method && <span> · {PAYMENT_METHOD_LABELS[original.method] ?? original.method}</span>}
+                          </div>
+                          <div>
+                            <span className="so-label">Дата оплаты</span>
+                            {dateInput(payment.paidAt, (v) => updatePaymentDate(payment.id, { paidAt: v }))}
+                          </div>
+                          <div>
+                            <span className="so-label">Внесена в CRM</span>
+                            {dateInput(payment.createdAt, (v) => updatePaymentDate(payment.id, { createdAt: v }))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             ),
           },
           {
-            key: 'shipment',
-            label: 'Отгрузка',
+            key: 'delivery',
+            label: 'Доставка',
+            // Поля доставки читаются при сохранении — вкладка должна быть отрисована,
+            // даже если её не открывали, иначе пустые значения обнулили бы доставку.
+            forceRender: true,
             children: (
-              <div>
+              <>
+                <Form form={form} layout="vertical" className="so-form">
+                  <div className="so-grid">
+                    <Form.Item name="deliveryType" label="Тип доставки">
+                      <Select allowClear placeholder="Не указан" options={[
+                        { label: 'Самовывоз', value: 'SELF_PICKUP' },
+                        { label: 'Яндекс', value: 'YANDEX' },
+                        { label: 'Доставка', value: 'DELIVERY' },
+                      ]} />
+                    </Form.Item>
+                    <Form.Item name="deliveryComment" label="Комментарий доставки">
+                      <Input placeholder="Комментарий..." />
+                    </Form.Item>
+                    <Form.Item name="vehicleType" label="Тип машины">
+                      <Input placeholder="Газель, фура..." />
+                    </Form.Item>
+                    <Form.Item name="vehicleNumber" label="Номер машины">
+                      <Input placeholder="01 A 123 AA" />
+                    </Form.Item>
+                    <Form.Item name="loadingAssigneeId" label="Грузил">
+                      <Select allowClear showSearch filterOption={smartFilterOption} placeholder="Не назначен"
+                        options={userOptions(['WAREHOUSE', 'DRIVER', 'LOADER'])}
+                      />
+                    </Form.Item>
+                    <Form.Item name="deliveryDriverId" label="Водитель доставки">
+                      <Select allowClear showSearch filterOption={smartFilterOption} placeholder="Не назначен"
+                        options={userOptions(['DRIVER'])}
+                      />
+                    </Form.Item>
+                  </div>
+                </Form>
+
+                <div className="so-section">Отгрузка по накладной</div>
                 {!editShipment ? (
-                  <div style={{ textAlign: 'center', padding: '32px 16px' }}>
-                    <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                      {deal.shipment ? 'Отгрузка уже оформлена. Нажмите для редактирования.' : 'Отгрузка не оформлена.'}
+                  <div className="so-empty">
+                    <Typography.Text type="secondary">
+                      {deal.shipment ? 'Отгрузка оформлена.' : 'Отгрузка не оформлена.'}
                     </Typography.Text>
-                    <Button type="primary" onClick={() => setEditShipment(true)}>
+                    <Button onClick={() => setEditShipment(true)}>
                       {deal.shipment ? 'Редактировать отгрузку' : 'Добавить отгрузку'}
                     </Button>
                   </div>
                 ) : (
-                  <Form form={shipmentForm} layout="vertical">
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
-                      <Form.Item name="vehicleType" label="Тип транспорта" rules={[{ required: true }]}>
-                        <Input placeholder="Грузовик / Фура / ..." />
-                      </Form.Item>
-                      <Form.Item name="vehicleNumber" label="Номер транспорта" rules={[{ required: true }]}>
-                        <Input placeholder="01 A 123 AA" />
-                      </Form.Item>
-                      <Form.Item name="driverName" label="Водитель" rules={[{ required: true }]}>
-                        <Input placeholder="ФИО водителя" />
-                      </Form.Item>
-                      <Form.Item name="departureTime" label="Время отправления" rules={[{ required: true }]}>
-                        <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
-                      </Form.Item>
-                      <Form.Item name="shippedAt" label="Дата отгрузки (факт по накладной)">
-                        <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" allowClear />
-                      </Form.Item>
-                      <Form.Item name="deliveryNoteNumber" label="Номер накладной" rules={[{ required: true }]}>
+                  <Form form={shipmentForm} layout="vertical" className="so-form">
+                    <div className="so-grid">
+                      <Form.Item name="deliveryNoteNumber" label="Номер накладной" rules={[{ required: true, message: 'Укажите номер' }]}>
                         <Input placeholder="Номер накладной" />
                       </Form.Item>
-                      <Form.Item name="shipmentComment" label="Комментарий">
+                      <Form.Item name="shippedAt" label="Дата отгрузки (по накладной)">
+                        <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" allowClear />
+                      </Form.Item>
+                      <Form.Item name="vehicleType" label="Транспорт" rules={[{ required: true, message: 'Укажите транспорт' }]}>
+                        <Input placeholder="Грузовик, фура..." />
+                      </Form.Item>
+                      <Form.Item name="vehicleNumber" label="Номер транспорта" rules={[{ required: true, message: 'Укажите номер' }]}>
+                        <Input placeholder="01 A 123 AA" />
+                      </Form.Item>
+                      <Form.Item name="driverName" label="Водитель" rules={[{ required: true, message: 'Укажите водителя' }]}>
+                        <Input placeholder="ФИО водителя" />
+                      </Form.Item>
+                      <Form.Item name="departureTime" label="Время отправления" rules={[{ required: true, message: 'Укажите время' }]}>
+                        <DatePicker showTime style={{ width: '100%' }} format="DD.MM.YYYY HH:mm" />
+                      </Form.Item>
+                      <Form.Item name="shipmentComment" label="Комментарий" className="so-grid__wide">
                         <Input placeholder="Комментарий к отгрузке" />
                       </Form.Item>
                     </div>
                   </Form>
                 )}
+              </>
+            ),
+          },
+          {
+            key: 'comments',
+            label: `Комментарии (${commentDates.length})`,
+            children: commentDates.length === 0 ? (
+              <Typography.Text type="secondary">Комментариев нет.</Typography.Text>
+            ) : (
+              <div className="so-rows">
+                {commentDates.map((comment) => (
+                  <div key={comment.id} className="so-row so-row--comment">
+                    <div className="so-row__title">{comment.text || 'Комментарий'}</div>
+                    <div>
+                      <span className="so-label">Дата комментария</span>
+                      {dateInput(comment.createdAt, (v) => updateCommentDate(comment.id, { createdAt: v }))}
+                    </div>
+                  </div>
+                ))}
               </div>
             ),
           },
         ]}
       />
 
-      <div
-        style={{
-          position: 'fixed',
-          left: 'var(--app-sider-width, 0px)',
-          right: 0,
-          bottom: 0,
-          zIndex: 90,
-          padding: `12px clamp(16px, 3vw, 28px)`,
-          paddingBottom: footerBottomPad,
-          background: tk.colorBgContainer,
-          borderTop: `1px solid ${tk.colorBorderSecondary}`,
-          boxShadow: '0 -6px 16px rgba(0,0,0,0.06)',
-          display: 'flex',
-          justifyContent: 'flex-end',
-          alignItems: 'center',
-          gap: 12,
-          maxWidth: '100%',
-        }}
-      >
-        <Button onClick={onCancel}>Отмена</Button>
-        <Popconfirm
-          title="Применить override?"
-          description="Это действие будет записано в аудит."
-          onConfirm={handleSubmit}
-        >
-          <Button type="primary" danger loading={overrideMut.isPending}>
-            Применить Override
-          </Button>
-        </Popconfirm>
-      </div>
-    </>
+      {footer}
+    </div>
   );
 }

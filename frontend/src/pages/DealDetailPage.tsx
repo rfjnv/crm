@@ -2910,16 +2910,21 @@ export default function DealDetailPage() {
       {/* Override Modal */}
       {canSuperOverride && (
         <Modal
-          title="Super Override"
+          title={<>Суперредактирование <span className="so-modal-sub">{deal.title}</span></>}
           open={overrideModal}
           onCancel={() => setOverrideModal(false)}
           footer={null}
-          width="100vw"
-          style={{ top: 0, margin: 0, padding: 0, maxWidth: '100vw' }}
-          styles={{ body: { height: 'calc(var(--app-vh, 100dvh) - 57px)', overflow: 'auto' } }}
+          width={isMobile ? '100vw' : 'min(1120px, calc(100vw - 48px))'}
+          style={isMobile ? { top: 0, margin: 0, padding: 0, maxWidth: '100vw' } : { top: 24 }}
+          styles={{
+            body: isMobile
+              ? { height: 'calc(var(--app-vh, 100dvh) - 57px)', overflow: 'auto' }
+              : { maxHeight: 'calc(var(--app-vh, 100vh) - 140px)', overflow: 'auto' },
+          }}
           destroyOnClose
         >
           <SuperOverridePanel
+            variant="modal"
             deal={deal}
             payments={dealPayments ?? []}
             products={products ?? []}
