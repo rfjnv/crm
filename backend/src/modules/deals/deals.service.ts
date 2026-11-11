@@ -1162,6 +1162,49 @@ export class DealsService {
    * или WAITING_WAREHOUSE_MANAGER (вручную через sendToFinance или автоматически
    * после ответа склада, когда способ оплаты уже был известен).
    */
+  /**
+   * Способ оплаты сменили на перечисление/рассрочку, когда сделка уже ушла к завскладу
+   * мимо бухгалтерии (была, например, наличными). Такие сделки бухгалтерия должна проверить,
+   * как если бы менеджер сразу отправил их на перечисление: возвращаем в «На проверке»
+   * (WAITING_FINANCE), шлём пост в группу финансов и уведомляем бухгалтеров. После
+   * одобрения сделка, как обычно, снова уходит к завскладу.
+   */
+  private async rerouteToFinanceAfterMethodChange(
+    deal: { id: string; title: string; status: DealStatus; paymentMethod: PaymentMethod | null },
+    newMethod: PaymentMethod,
+    user: AuthUser,
+  ): Promise<boolean> {
+    const wasReviewed = deal.paymentMethod != null && requiresFinanceReview(deal.paymentMethod);
+    if (wasReviewed || !requiresFinanceReview(newMethod) || deal.status !== 'WAITING_WAREHOUSE_MANAGER') {
+      return false;
+    }
+    const moved = await prisma.deal.updateMany({
+      where: { id: deal.id, status: 'WAITING_WAREHOUSE_MANAGER' },
+      data: { status: 'WAITING_FINANCE' },
+    });
+    if (moved.count === 0) return false;
+    // Пост в группе финансов шлётся один раз (флаг sentToFinance): если поста ещё нет — разрешаем отправку.
+    await prisma.deal.updateMany({
+      where: { id: deal.id, financeTelegramMessageId: null },
+      data: { sentToFinance: false },
+    });
+
+    await auditLog({
+      userId: user.userId,
+      action: 'STATUS_CHANGE',
+      entityType: 'deal',
+      entityId: deal.id,
+      before: { status: deal.status, paymentMethod: deal.paymentMethod },
+      after: { status: 'WAITING_FINANCE', paymentMethod: newMethod, reason: 'Способ оплаты сменили — нужна проверка бухгалтерии' },
+    });
+
+    await this.notifyRoutedTarget(deal.id, deal.title, 'WAITING_FINANCE', user.userId);
+    await syncDealTelegramGroupMessages(deal.id).catch((err) => {
+      console.error('[Telegram deal groups] reroute to finance sync:', err);
+    });
+    return true;
+  }
+
   private async notifyRoutedTarget(
     dealId: string,
     dealTitle: string,
@@ -1377,7 +1420,10 @@ export class DealsService {
       after: { paymentMethod: dto.paymentMethod },
     });
 
-    // Смена способа оплаты в группы не отправляется — только в CRM/аудит.
+    // Сама смена способа оплаты в группы не отправляется — только в CRM/аудит.
+    // Но если сделка ушла к завскладу мимо бухгалтерии, а теперь стала перечислением —
+    // возвращаем её на проверку.
+    await this.rerouteToFinanceAfterMethodChange(deal, dto.paymentMethod as PaymentMethod, user);
 
     return this.findById(dealId, user);
   }
@@ -4282,6 +4328,10 @@ export class DealsService {
     }).catch((err) => {
       console.error('[Telegram deal groups] syncDealTelegramGroupMessages (wm-override):', err);
     });
+
+    if (dto.paymentMethod) {
+      await this.rerouteToFinanceAfterMethodChange(deal, dto.paymentMethod as PaymentMethod, user);
+    }
 
     return this.findById(id, user);
   }
