@@ -204,6 +204,16 @@ export type UpdatePaymentRecordDto = z.infer<typeof updatePaymentRecordDto>;
 
 // ──── SUPER_ADMIN Override ────
 
+/**
+ * Фактическая дата (создание, закрытие, оплата, отгрузка) не может быть в будущем: 02.04.2026
+ * при правке сделки ппс от 08.11.2025 год остался текущим, и закрытая сделка 7 месяцев
+ * «ждала» 08.11.2026. Сутки запаса — на разницу часовых поясов. Срок оплаты (dueDate) сюда не относится.
+ */
+const pastDate = z.string().nullable().optional().refine(
+  (v) => !v || Number.isNaN(Date.parse(v)) || Date.parse(v) <= Date.now() + 24 * 60 * 60 * 1000,
+  'Дата не может быть в будущем — проверьте год',
+);
+
 export const superOverrideDealDto = z.object({
   reason: z.string().min(3, 'Укажите причину изменения (мин. 3 символа)'),
   title: z.string().min(1).optional(),
@@ -215,9 +225,9 @@ export const superOverrideDealDto = z.object({
   paymentType: z.enum(['FULL', 'PARTIAL', 'INSTALLMENT']).optional(),
   paidAmount: z.number().min(0).optional(),
   dueDate: z.string().nullable().optional(),
-  createdAt: z.string().nullable().optional(),
+  createdAt: pastDate,
   /** Дата закрытия / доставки сделки (факт) */
-  closedAt: z.string().nullable().optional(),
+  closedAt: pastDate,
   discount: z.number().min(0).optional(),
   terms: z.string().nullable().optional(),
   deliveryType: z.enum(['SELF_PICKUP', 'YANDEX', 'DELIVERY']).nullable().optional(),
@@ -235,16 +245,16 @@ export const superOverrideDealDto = z.object({
     rollCount: z.number().min(0).nullable().optional(),
     requestComment: z.string().optional(),
     warehouseComment: z.string().optional(),
-    dealDate: z.string().nullable().optional(),
-    confirmedAt: z.string().nullable().optional(),
-    createdAt: z.string().nullable().optional(),
-    shippedAt: z.string().nullable().optional(),
-    deliveredAt: z.string().nullable().optional(),
+    dealDate: pastDate,
+    confirmedAt: pastDate,
+    createdAt: pastDate,
+    shippedAt: pastDate,
+    deliveredAt: pastDate,
   })).optional(),
   payments: z.array(z.object({
     id: z.string().uuid(),
-    paidAt: z.string().nullable().optional(),
-    createdAt: z.string().nullable().optional(),
+    paidAt: pastDate,
+    createdAt: pastDate,
   })).optional(),
   comments: z.array(z.object({
     id: z.string().uuid(),
@@ -257,7 +267,7 @@ export const superOverrideDealDto = z.object({
     departureTime: z.string().min(1),
     deliveryNoteNumber: z.string().min(1),
     shipmentComment: z.string().optional(),
-    shippedAt: z.string().nullable().optional(),
+    shippedAt: pastDate,
   }).optional(),
 });
 
@@ -272,7 +282,7 @@ export const superDeleteDealDto = z.object({
 
 export const warehouseOverrideDealDto = z.object({
   reason: z.string().min(3, 'Укажите причину изменения (мин. 3 символа)'),
-  createdAt: z.string().nullable().optional(),
+  createdAt: pastDate,
   paymentMethod: z.enum(['CASH', 'TRANSFER', 'PAYME', 'QR', 'CLICK', 'TERMINAL', 'INSTALLMENT', 'DEBT']).nullable().optional(),
   items: z.array(z.object({
     id: z.string().uuid().optional(),
@@ -280,7 +290,7 @@ export const warehouseOverrideDealDto = z.object({
     requestedQty: z.number().min(0).optional(),
     price: z.number().min(0).optional(),
     rollCount: z.number().min(0).nullable().optional(),
-    dealDate: z.string().nullable().optional(),
+    dealDate: pastDate,
   })).optional(),
 });
 

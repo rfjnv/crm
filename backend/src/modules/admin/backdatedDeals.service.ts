@@ -28,7 +28,9 @@ export const backdatedDealsDto = z.object({
   deductStock: z.boolean().default(true),
   reason: z.string().trim().min(3, 'Укажите причину (мин. 3 символа)'),
   items: z.array(z.object({
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате ГГГГ-ММ-ДД'),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате ГГГГ-ММ-ДД')
+      // Сегодня по Ташкенту — последний допустимый день: сделка задним числом не может быть из будущего.
+      .refine((d) => d <= new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10), 'Дата не может быть в будущем — проверьте год'),
     productId: z.string().uuid(),
     qty: z.number().positive(),
     price: z.number().min(0),
