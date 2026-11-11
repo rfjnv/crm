@@ -22,6 +22,7 @@ import {
   inferTypeLabel,
   safePrice,
   getPeriodBoundsByPreset,
+  isHierarchyPeriodPreset,
   loadSalesContext,
   type HierarchyPeriodPreset,
 } from '../lib/analyticsHierarchySales';
@@ -165,10 +166,7 @@ export default function HierarchyClientsAnalyticsPanel({
   const [clientScopeType, setClientScopeType] = useState<string | null>(readPersist('type'));
   const [clientScopeProductId, setClientScopeProductId] = useState<string | null>(readPersist('product'));
   const [hierarchyPeriodPreset, setHierarchyPeriodPreset] = useState<HierarchyPeriodPreset>(
-    persistedPreset === 'week' || persistedPreset === 'month' || persistedPreset === 'quarter' || persistedPreset === 'year'
-      || persistedPreset === 'custom' || persistedPreset === 'range'
-      ? persistedPreset
-      : 'month',
+    isHierarchyPeriodPreset(persistedPreset) ? persistedPreset : 'month',
   );
   const [hierarchyCustomDays, setHierarchyCustomDays] = useState<number>(
     Number.isFinite(persistedDays) && persistedDays > 0 ? persistedDays : 30,
@@ -309,7 +307,11 @@ export default function HierarchyClientsAnalyticsPanel({
 
   const hierarchyStale = 120_000;
 
-  const { data: hierarchyClientContext, isLoading: hierarchyClientLoading } = useQuery({
+  const {
+    data: hierarchyClientContext,
+    isLoading: hierarchyClientLoading,
+    error: hierarchyClientError,
+  } = useQuery({
     queryKey: [
       'analytics-hierarchy-clients-context',
       hierarchyPeriodPreset,
@@ -1024,6 +1026,10 @@ export default function HierarchyClientsAnalyticsPanel({
               { label: 'Месяц', value: 'month' },
               { label: 'Квартал', value: 'quarter' },
               { label: 'Год', value: 'year' },
+              { label: '2 года', value: 'years2' },
+              { label: '3 года', value: 'years3' },
+              { label: '5 лет', value: 'years5' },
+              { label: '10 лет', value: 'years10' },
               { label: 'Дни', value: 'custom' },
               { label: 'Свой период', value: 'range' },
             ]}
@@ -1033,7 +1039,7 @@ export default function HierarchyClientsAnalyticsPanel({
               min={1}
               max={3650}
               value={hierarchyCustomDays}
-              onChange={(v) => setHierarchyCustomDays(Number(v) || 30)}
+              onChange={(v) => setHierarchyCustomDays(Math.min(3650, Math.max(1, Math.floor(Number(v)) || 30)))}
               addonAfter="дн."
             />
           )}
@@ -1050,6 +1056,19 @@ export default function HierarchyClientsAnalyticsPanel({
             />
           )}
         </Space>
+        {hierarchyClientError && (
+          <div style={{ marginTop: 8 }}>
+            <Typography.Text type="danger">
+              Не удалось загрузить продажи за этот период
+              {(() => {
+                const msg = (hierarchyClientError as { response?: { data?: { message?: string; error?: string } } })
+                  .response?.data;
+                const text = msg?.message || msg?.error;
+                return text ? `: ${text}` : '.';
+              })()}
+            </Typography.Text>
+          </div>
+        )}
       </Card>
 
       <Card bordered={false} title="Фильтры выбора">

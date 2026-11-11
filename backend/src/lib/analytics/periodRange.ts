@@ -56,7 +56,11 @@ export function getAnalyticsPresetPeriodRange(period: string): { start: Date; en
 }
 
 /** Произвольный период: from/to включительно (конец дня to), end exclusive для SQL. */
-export function getAnalyticsCustomPeriodRange(fromYmd: string, toYmd: string): { start: Date; end: Date } {
+export function getAnalyticsCustomPeriodRange(
+  fromYmd: string,
+  toYmd: string,
+  maxDays: number = ANALYTICS_MAX_CUSTOM_DAYS,
+): { start: Date; end: Date } {
   const start = parseTashkentYmd(fromYmd, 'from');
   const lastDayStart = parseTashkentYmd(toYmd, 'to');
   if (lastDayStart < start) {
@@ -64,20 +68,24 @@ export function getAnalyticsCustomPeriodRange(fromYmd: string, toYmd: string): {
   }
   const endExclusive = new Date(lastDayStart.getTime() + 86400000);
   const spanDays = Math.ceil((endExclusive.getTime() - start.getTime()) / 86400000);
-  if (spanDays > ANALYTICS_MAX_CUSTOM_DAYS) {
-    throw new AppError(400, `Интервал не более ${ANALYTICS_MAX_CUSTOM_DAYS} дней`);
+  if (spanDays > maxDays) {
+    throw new AppError(400, `Интервал не более ${maxDays} дней`);
   }
   return { start, end: endExclusive };
 }
 
-export function resolveAnalyticsPeriodRange(query: {
-  period?: string;
-  from?: string;
-  to?: string;
-}): { start: Date; end: Date } {
+export function resolveAnalyticsPeriodRange(
+  query: {
+    period?: string;
+    from?: string;
+    to?: string;
+  },
+  /** Предел длины произвольного периода; по умолчанию год, «иерархия» разрешает больше. */
+  maxCustomDays: number = ANALYTICS_MAX_CUSTOM_DAYS,
+): { start: Date; end: Date } {
   const from = query.from?.trim();
   const to = query.to?.trim();
-  if (from && to) return getAnalyticsCustomPeriodRange(from, to);
+  if (from && to) return getAnalyticsCustomPeriodRange(from, to, maxCustomDays);
   if (from || to) {
     throw new AppError(400, 'Укажите обе даты from и to (YYYY-MM-DD)');
   }

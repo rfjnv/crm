@@ -400,12 +400,22 @@ router.get(
  * произвольного периода молча игнорировался, а фронт присылал скользящее окно
  * (последние 30/90/365 дней), из-за чего вкладка расходилась с «Продажами».
  */
+/**
+ * «Клиенты по иерархии» смотрят продажи за несколько лет (кнопки «2 года … 10 лет»,
+ * «Дни», «Свой период»). Общий предел аналитики в 366 дней отвечал на такие запросы 400,
+ * и панель молча показывала пустоту. Здесь предел — чуть больше 10 лет.
+ */
+const HIERARCHY_MAX_PERIOD_DAYS = 3700;
+
 function resolveHierarchyPeriod(req: Request) {
-  return resolveAnalyticsPeriodRange({
-    period: typeof req.query.period === 'string' ? req.query.period : undefined,
-    from: typeof req.query.from === 'string' ? req.query.from : undefined,
-    to: typeof req.query.to === 'string' ? req.query.to : undefined,
-  });
+  return resolveAnalyticsPeriodRange(
+    {
+      period: typeof req.query.period === 'string' ? req.query.period : undefined,
+      from: typeof req.query.from === 'string' ? req.query.from : undefined,
+      to: typeof req.query.to === 'string' ? req.query.to : undefined,
+    },
+    HIERARCHY_MAX_PERIOD_DAYS,
+  );
 }
 
 /** Область видимости сделок для запроса (менеджер видит только свои). */

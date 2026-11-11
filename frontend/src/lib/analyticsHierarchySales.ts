@@ -26,7 +26,22 @@ export type ProductPurchaseRow = {
 };
 
 /** `custom` — последние N дней, `range` — произвольный период «от-до» */
-export type HierarchyPeriodPreset = AnalyticsPeriod | 'custom' | 'range';
+export type HierarchyYearsPreset = 'years2' | 'years3' | 'years5' | 'years10';
+export type HierarchyPeriodPreset = AnalyticsPeriod | HierarchyYearsPreset | 'custom' | 'range';
+
+/** Пресеты «последние N лет» → число лет. */
+export const HIERARCHY_YEARS_PRESETS: Record<HierarchyYearsPreset, number> = {
+  years2: 2,
+  years3: 3,
+  years5: 5,
+  years10: 10,
+};
+
+export function isHierarchyPeriodPreset(value: string | null): value is HierarchyPeriodPreset {
+  return value === 'week' || value === 'month' || value === 'quarter' || value === 'year'
+    || value === 'custom' || value === 'range'
+    || (!!value && value in HIERARCHY_YEARS_PRESETS);
+}
 
 export type PeriodBounds = { start: Date; end: Date | null };
 
@@ -108,7 +123,12 @@ export function getStartDateByPreset(preset: HierarchyPeriodPreset, customDays: 
     start.setDate(start.getDate() - safeDays);
     return start;
   }
-  return getPeriodStartDate(preset);
+  if (preset in HIERARCHY_YEARS_PRESETS) {
+    const start = new Date();
+    start.setFullYear(start.getFullYear() - HIERARCHY_YEARS_PRESETS[preset as HierarchyYearsPreset]);
+    return start;
+  }
+  return getPeriodStartDate(preset as AnalyticsPeriod);
 }
 
 /**
