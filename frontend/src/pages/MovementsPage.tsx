@@ -35,6 +35,19 @@ export default function MovementsPage() {
     return () => window.clearTimeout(id);
   }, [searchInput]);
 
+  /** Быстрые фильтры поступлений: тип «Приход» + период. Повторный клик снимает фильтр. */
+  const arrivalPresets: { key: string; label: string; range: () => [Dayjs, Dayjs] }[] = [
+    { key: 'today', label: 'Приход сегодня', range: () => [dayjs().startOf('day'), dayjs().startOf('day')] },
+    { key: 'week', label: 'Приход за неделю', range: () => [dayjs().subtract(6, 'day').startOf('day'), dayjs().startOf('day')] },
+  ];
+  const activeArrivalPreset =
+    typeFilter === 'IN' && dateRange
+      ? arrivalPresets.find((p) => {
+          const [from, to] = p.range();
+          return dateRange[0].isSame(from, 'day') && dateRange[1].isSame(to, 'day');
+        })?.key
+      : undefined;
+
   const filters = {
     productId: productFilter,
     type: typeFilter,
@@ -320,6 +333,30 @@ export default function MovementsPage() {
           format="DD.MM.YYYY"
         />
       </div>
+
+      <Space wrap style={{ marginBottom: 16 }}>
+        {arrivalPresets.map((p) => {
+          const active = activeArrivalPreset === p.key;
+          return (
+            <Button
+              key={p.key}
+              type={active ? 'primary' : 'default'}
+              icon={<ArrowUpOutlined />}
+              onClick={() => {
+                if (active) {
+                  setTypeFilter(undefined);
+                  setDateRange(null);
+                } else {
+                  setTypeFilter('IN');
+                  setDateRange(p.range());
+                }
+              }}
+            >
+              {p.label}
+            </Button>
+          );
+        })}
+      </Space>
 
       <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
         <Col xs={12} sm={8} md={6}>
