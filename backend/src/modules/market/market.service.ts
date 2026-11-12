@@ -2,6 +2,7 @@ import prisma from '../../lib/prisma';
 import { CATALOG_LINKS, normalizeSku, resolveOurPrice } from './marketCatalogLinks';
 import { PRICE_ROWS, type PriceRow } from './priceComparisonData';
 import { OUR_ONLY_ROWS, THEIR_ONLY_ROWS } from './uniqueProductsComparisonData';
+import { COMPETITOR_PRICE_DATES } from './competitorPriceDates';
 
 /** Строка сравнения с нашей ценой, взятой из каталога CRM (см. marketCatalogLinks.ts). */
 export type LivePriceRow = PriceRow & {
@@ -39,6 +40,7 @@ export async function getMarketComparison() {
     priceRows: livePriceRows(priceBySku),
     theirOnly: THEIR_ONLY_ROWS,
     ourOnly: OUR_ONLY_ROWS,
+    priceDates: COMPETITOR_PRICE_DATES,
   };
 }
 

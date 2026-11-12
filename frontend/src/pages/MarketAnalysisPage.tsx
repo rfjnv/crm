@@ -7,6 +7,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import {
   marketApi,
   type Competitor,
+  type CompetitorPriceDate,
   type LivePriceRow,
   type MarketComparison,
   type MatchType,
@@ -41,7 +42,7 @@ type TheirPricePick = number | 'missing' | null;
 
 // ─── Наши цены из каталога ──────────────────────────────────────────────────
 
-const EMPTY_MARKET: MarketComparison = { priceRows: [], theirOnly: [], ourOnly: [] };
+const EMPTY_MARKET: MarketComparison = { priceRows: [], theirOnly: [], ourOnly: [], priceDates: [] };
 
 /**
  * Данные анализа рынка с сервера: прайсы конкурентов лежат там же, где их читает
@@ -1194,6 +1195,40 @@ function PriceComparisonTab() {
   );
 }
 
+// ─── Даты прайсов ───────────────────────────────────────────────────────────
+
+/** Прайс старше этого числа дней подсвечиваем: цены могли измениться. */
+const STALE_DAYS = 45;
+
+function PriceDates({ dates }: { dates: CompetitorPriceDate[] }) {
+  const { token } = theme.useToken();
+  if (!dates.length) return null;
+  const today = new Date();
+  return (
+    <Card size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: '10px 12px' } }}>
+      <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+        Даты прайсов конкурентов
+      </Typography.Text>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
+        {dates.map((d) => {
+          const days = d.date ? Math.floor((today.getTime() - new Date(`${d.date}T00:00:00`).getTime()) / 86_400_000) : null;
+          const stale = days == null || days > STALE_DAYS;
+          const label = d.date ? d.date.split('-').reverse().join('.') : 'дата неизвестна';
+          return (
+            <Tooltip key={`${d.competitor}-${d.scope ?? ''}`} title={[d.scope, d.note, days != null ? `${days} дн. назад` : null].filter(Boolean).join(' · ') || undefined}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                <Tag color={competitorColor[d.competitor]} style={{ marginInlineEnd: 0 }}>{d.competitor}</Tag>
+                {d.scope && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{d.scope}</Typography.Text>}
+                <span style={{ fontVariantNumeric: 'tabular-nums', color: stale ? token.colorWarning : undefined }}>{label}</span>
+              </span>
+            </Tooltip>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function MarketAnalysisPage() {
@@ -1220,6 +1255,8 @@ export default function MarketAnalysisPage() {
           action={<Button size="small" onClick={() => refetch()}>Повторить</Button>}
         />
       ) : (
+      <>
+      <PriceDates dates={market.priceDates ?? []} />
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
@@ -1241,6 +1278,7 @@ export default function MarketAnalysisPage() {
           },
         ]}
       />
+      </>
       )}
     </div>
   );

@@ -36,10 +36,20 @@ export type OurOnlyRow = {
   note?: string;
 };
 
+/** Дата прайса конкурента; у Paper World — по одной на каждый прайс (scope). */
+export type CompetitorPriceDate = {
+  competitor: Competitor;
+  /** ГГГГ-ММ-ДД; null — дата неизвестна. */
+  date: string | null;
+  scope?: string;
+  note?: string;
+};
+
 export interface MarketComparison {
   priceRows: LivePriceRow[];
   theirOnly: TheirOnlyRow[];
   ourOnly: OurOnlyRow[];
+  priceDates: CompetitorPriceDate[];
 }
 
 export const marketApi = {
