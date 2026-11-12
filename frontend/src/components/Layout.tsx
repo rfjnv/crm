@@ -813,11 +813,19 @@ export default function Layout() {
               icon: <AppstoreOutlined />,
               label: <Link to="/analytics/categories">Анализ категорий</Link>,
             },
+          ]
+          : []),
+        ...(hasRole('SUPER_ADMIN', 'ADMIN') || hasPermission('view_market_analysis')
+          ? [
             {
               key: '/analytics/market',
               icon: <GlobalOutlined />,
               label: <Link to="/analytics/market">Анализ рынка</Link>,
             },
+          ]
+          : []),
+        ...(hasRole('SUPER_ADMIN', 'ADMIN')
+          ? [
             {
               key: '/analytics/department-report',
               icon: <FileTextOutlined />,

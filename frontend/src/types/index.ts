@@ -41,7 +41,8 @@ export type Permission =
   | 'view_hr_calls'
   | 'view_import_orders'
   | 'use_rop_agent'
-  | 'accountant_assistant';
+  | 'accountant_assistant'
+  | 'view_market_analysis';
 
 export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'manage_users', label: 'Управление пользователями' },
@@ -76,6 +77,7 @@ export const ALL_PERMISSIONS: { key: Permission; label: string }[] = [
   { key: 'use_rop_agent', label: 'РОП-агент (выдаётся поимённо)' },
   { key: 'accountant_assistant', label: 'Помощник бухгалтера (доступ как у бухгалтера)' },
   { key: 'view_hr_calls', label: 'Звонки HR — все (выдаётся поимённо)' },
+  { key: 'view_market_analysis', label: 'Анализ рынка (цены конкурентов)' },
 ];
 
 const SUPER_ONLY: Permission[] = ['super_deal_override', 'delete_any_deal', 'view_audit_history', 'use_rop_agent', 'view_hr_calls'];

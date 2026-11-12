@@ -280,6 +280,9 @@ export default function App() {
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
                   <Route path="/hr-journal" element={<HrJournalPage />} />
                 </Route>
+                <Route element={<PrivateRoute permission="view_market_analysis" />}>
+                  <Route path="/analytics/market" element={<MarketAnalysisPage />} />
+                </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN']} />}>
                   <Route path="/admin/activity-log" element={<ActivityLogPage />} />
                   <Route path="/admin/deals/backdated" element={<BackdatedDealsPage />} />
@@ -289,7 +292,6 @@ export default function App() {
                   <Route path="/deals/:id/override" element={<DealOverridePage />} />
                   <Route path="/analytics" element={<MoneyAccessGuard><AnalyticsPage /></MoneyAccessGuard>} />
                   <Route path="/history-analytics" element={<HistoryAnalyticsPage />} />
-                  <Route path="/analytics/market" element={<MarketAnalysisPage />} />
                   <Route path="/analytics/categories" element={<MoneyAccessGuard><CategoryAnalysisPage /></MoneyAccessGuard>} />
                   <Route path="/analytics/department-report" element={<MoneyAccessGuard><DepartmentReportPage /></MoneyAccessGuard>} />
                   <Route path="/analytics/price-comparison" element={<Navigate to="/analytics/market" replace />} />

@@ -35,6 +35,8 @@ export const PERMISSIONS = {
   ACCOUNTANT_ASSISTANT: 'accountant_assistant',
   /** Звонки HR (кандидаты, сотрудники) — все. Кроме директора, выдаётся поимённо; сама HR видит свои и без него. */
   VIEW_HR_CALLS: 'view_hr_calls',
+  /** Анализ рынка (цены конкурентов) без остальной аналитики — для РОПа и менеджеров, выдаётся поимённо. */
+  VIEW_MARKET_ANALYSIS: 'view_market_analysis',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
