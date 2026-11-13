@@ -264,7 +264,7 @@ function tree(a: MenuAccess): { key: string; title?: string; items: DraftNode[] 
           text: 'Менеджерам',
           icon: UsersFour,
           children: [
-            { key: '/manager/client-activity', to: '/manager/client-activity', text: 'Активность клиентов', soloText: 'Аналитика для менеджеров', show: managerAnalytics },
+            { key: '/manager/client-activity', to: '/manager/client-activity', text: 'Аналитика для менеджеров', show: managerAnalytics },
             { key: '/manager/reanimation', to: '/manager/reanimation', text: 'Реанимация', show: managerAnalytics },
             { key: '/manager/dead-products', to: '/manager/dead-products', text: 'Мёртвые товары', show: managerAnalytics },
             { key: '/manager/payment-overdue', to: '/manager/payment-overdue', text: 'Просрочка', show: managerAnalytics },
