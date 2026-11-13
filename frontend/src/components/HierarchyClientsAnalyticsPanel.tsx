@@ -1404,7 +1404,7 @@ export default function HierarchyClientsAnalyticsPanel({
             {/* Не antd Affix: он меряет getBoundingClientRect (уже с учётом zoom масштаба интерфейса)
                 и пишет эти пиксели в стиль, где zoom применяется ещё раз — плашка уезжала вбок
                 и давала горизонтальный скролл. sticky браузер считает сам. */}
-            <div style={{ position: 'sticky', bottom: 16, zIndex: 10, marginTop: 16, display: 'flex', justifyContent: 'flex-start', paddingLeft: 180, pointerEvents: 'none' }}>
+            <div style={{ position: 'sticky', bottom: 16, zIndex: 100, marginTop: 16, display: 'flex', justifyContent: 'flex-start', paddingLeft: 180, pointerEvents: 'none' }}>
               <Card
                 size="small"
                 style={{
