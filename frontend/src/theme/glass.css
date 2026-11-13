@@ -493,11 +493,14 @@ html[data-design='modern']:has(.app-shell) .ant-input-affix-wrapper .ant-input {
  * в тон стекла. Без размытия: оно стояло на каждой закреплённой ячейке каждой строки
  * и пересчитывалось при любой прокрутке таблицы — на слабых машинах это тормозило.
  */
-html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-cell-fix-left,
-html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-cell-fix-right,
-/* antd 6 называет закреплённые ячейки fix-start / fix-end — без них заливка пропадала */
-html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-cell-fix-start,
-html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-cell-fix-end,
+/*
+ * antd 6 называет закреплённые ячейки fix-start / fix-end. `.ant-table .ant-table-cell` — для веса:
+ * правило выше (`.ant-table-tbody > tr > td { transparent }`) иначе перебивает заливку.
+ */
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table .ant-table-cell.ant-table-cell-fix-left,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table .ant-table-cell.ant-table-cell-fix-right,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table .ant-table-cell.ant-table-cell-fix-start,
+html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table .ant-table-cell.ant-table-cell-fix-end,
 html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-sticky-holder,
 html[data-design='modern']:has(.app-shell) .ant-layout-content .ant-table-sticky-holder .ant-table-thead > tr > th {
   background: var(--table-solid) !important;
