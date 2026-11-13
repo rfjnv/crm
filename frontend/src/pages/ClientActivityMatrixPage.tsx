@@ -24,6 +24,7 @@ import {
   type ActivityBucket, type ActivityGranularity,
 } from '../utils/activityPeriods';
 import type { HistoryClientActivity, Product } from '../types';
+import { useStickyTable } from '../hooks/useStickyTable';
 
 const { Title } = Typography;
 
@@ -414,6 +415,8 @@ export default function ClientActivityMatrixPage() {
 
   // ── Table columns ─────────────────────────────────────────────────────────────
 
+  const stickyTable = useStickyTable();
+
   const activityCols = useMemo<ColumnsType<ListRow>>(() => [
     {
       title: 'Клиент',
@@ -687,6 +690,7 @@ export default function ClientActivityMatrixPage() {
                         onChange: (p, ps) => patchParams({ page: p, pageSize: ps }),
                       }}
                       scroll={{ x: 'max-content' }}
+                      sticky={stickyTable}
                     />
                   )}
                 </Spin>

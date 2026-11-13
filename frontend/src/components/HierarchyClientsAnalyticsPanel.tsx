@@ -27,6 +27,8 @@ import {
   type HierarchyPeriodPreset,
 } from '../lib/analyticsHierarchySales';
 import { PALLET_FORMATS, SHEETS_PER_PALLET, formatPallets, palletFormatOf, sheetsPerPalletOf } from '../lib/pallets';
+import { useAppHeaderHeight } from '../hooks/useAppHeaderHeight';
+import { useStickyTable } from '../hooks/useStickyTable';
 
 type CompareLevel = 'category' | 'type' | 'product';
 type ClientViewMode = 'table' | 'matrix';
@@ -92,24 +94,6 @@ type PalletFormatRow = {
   clientsCount: number;
   products: { id: string; name: string; soldSheets: number; stockSheets: number }[];
 };
-
-/**
- * Высота верхней панели приложения: она сама липкая, и шапка таблицы,
- * прилипшая к top:0, ушла бы под неё.
- */
-function useAppHeaderHeight() {
-  const [height, setHeight] = useState(56);
-  useEffect(() => {
-    const header = document.querySelector('.ant-layout-header');
-    if (!header) return;
-    const update = () => setHeight(header.getBoundingClientRect().height);
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(header);
-    return () => ro.disconnect();
-  }, []);
-  return height;
-}
 
 type CategorySummary = {
   name: string;
@@ -709,6 +693,7 @@ export default function HierarchyClientsAnalyticsPanel({
   const hasPalletProducts = palletFormatRows.length > 0;
   const palletsCardRef = useRef<HTMLDivElement>(null);
   const appHeaderHeight = useAppHeaderHeight();
+  const stickyTable = useStickyTable();
 
   /** Сколько палет взял клиент: листы каждого товара делим на его норму палета. */
   const palletsOfMetrics = (metrics: ClientPurchaseSummaryRow['productMetrics']) => {
@@ -1381,7 +1366,7 @@ export default function HierarchyClientsAnalyticsPanel({
                 // Широкая таблица прокручивается вбок, а полоса прокрутки прилипает к низу экрана —
                 // не нужно листать до конца списка, чтобы увидеть правые колонки.
                 scroll={{ x: 'max-content' }}
-                sticky={{ offsetHeader: appHeaderHeight }}
+                sticky={stickyTable}
                 expandable={{
                   expandedRowRender: (record) => (
                     <Table
@@ -1410,7 +1395,7 @@ export default function HierarchyClientsAnalyticsPanel({
                   dataSource={matrixRows.clients}
                   locale={{ emptyText: renderNoSales() }}
                   scroll={{ x: 'max-content' }}
-                  sticky={{ offsetHeader: appHeaderHeight }}
+                  sticky={stickyTable}
                   columns={matrixColumns}
                 />
               </>
