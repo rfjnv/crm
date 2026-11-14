@@ -822,13 +822,16 @@ export class DealsService {
 
     if (dto.paymentMethod === 'TRANSFER') lookupInBackgroundIfUnknown(dto.transferInn ?? dilnozaTransferInn);
 
-    // Non-Dilnoza auto-route: if payment method is set + all items have qty+price,
+    // Auto-route: if payment method is set + all items have qty+price,
     // skip IN_PROGRESS and route directly (same as sendToFinance would do).
+    // Дилноза — тоже, когда маршрут «авто»: раньше её сделки оставались «В работе», пока она
+    // не нажмёт «Отправить», и созданные с телефона застревали. Явный маршрут — как выбрала.
     // TRANSFER with INN provided → also auto-route (save INN, go to WAITING_WAREHOUSE_MANAGER).
     // TRANSFER without INN → stay IN_PROGRESS (INN must be entered via "send to finance").
     // INSTALLMENT still requires manual sendToFinance.
-    if (!canUseDilnozaCreatePayment && paymentMethodAtCreate && allHaveQty) {
-      const autoStatus = autoRouteStatusByPaymentMethod(paymentMethodAtCreate, dto.transferInn ?? null);
+    const autoRouteAllowed = !canUseDilnozaCreatePayment || !dto.createRoute || dto.createRoute === 'AUTO';
+    if (autoRouteAllowed && paymentMethodAtCreate && allHaveQty) {
+      const autoStatus = autoRouteStatusByPaymentMethod(paymentMethodAtCreate, dto.transferInn ?? dilnozaTransferInn);
       if (autoStatus) {
         initialStatus = autoStatus;
         allHaveQtyForTelegram = true;
