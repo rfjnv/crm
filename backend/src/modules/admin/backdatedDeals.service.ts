@@ -102,6 +102,15 @@ async function rechainFrom(tx: Prisma.TransactionClient, productId: string, from
     ? (base.rollStockAfter != null ? Number(base.rollStockAfter) : null)
     : (moves[0].rollStockBefore != null ? Number(moves[0].rollStockBefore) : null);
   for (const m of moves) {
+    // Запись «для истории» (приход задним числом, уже учтённый в остатке) остаток не меняет:
+    // считать её настоящим приходом — значит раздуть остаток на всю партию.
+    if (/без изменения остатка/i.test(m.note ?? '')) {
+      await tx.inventoryMovement.update({
+        where: { id: m.id },
+        data: { stockBefore: stock, stockAfter: stock, rollStockBefore: rolls, rollStockAfter: rolls },
+      });
+      continue;
+    }
     const q = Number(m.quantity);
     const rq = m.rollQuantity != null ? Number(m.rollQuantity) : 0;
     const dq = m.type === 'IN' ? q : m.type === 'OUT' ? -q : Number(m.stockAfter ?? 0) - Number(m.stockBefore ?? 0);
