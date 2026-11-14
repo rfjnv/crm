@@ -7,6 +7,7 @@ import { inventoryApi } from '../api/warehouse.api';
 import { clientsApi } from '../api/clients.api';
 import { useAuthStore } from '../store/authStore';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useCostAccess } from '../hooks/useCostAccess';
 import MobileCardList from '../components/MobileCardList';
 import type { Product, ProductReservation } from '../types';
 import { matchesSearch } from '../utils/translit';
@@ -37,6 +38,7 @@ export default function WarehousePage() {
   const [unitFilter, setUnitFilter] = useState<string | undefined>(undefined);
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active');
   const [form] = Form.useForm();
+  const { open: costOpen } = useCostAccess();
   const [correctForm] = Form.useForm();
   const [reserveForm] = Form.useForm();
   const queryClient = useQueryClient();
@@ -72,7 +74,7 @@ export default function WarehousePage() {
   });
 
   const incomeMut = useMutation({
-    mutationFn: (data: { productId: string; type: 'IN'; quantity: number; note?: string; affectStock?: boolean; rollQuantity?: number }) =>
+    mutationFn: (data: { productId: string; type: 'IN'; quantity: number; note?: string; affectStock?: boolean; rollQuantity?: number; unitCost?: number }) =>
       inventoryApi.createMovement(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
@@ -511,6 +513,11 @@ export default function WarehousePage() {
           {selectedProduct?.rollStock != null && (
             <Form.Item name="rollQuantity" label="Количество рулонов" rules={[{ required: true, message: 'Обязательно' }]}>
               <InputNumber style={{ width: '100%' }} min={1} precision={0} />
+            </Form.Item>
+          )}
+          {costOpen && (
+            <Form.Item name="unitCost" label={`Цена закупки за ${selectedProduct?.unit ?? 'ед.'}, сум`} extra="Из документа поставщика. Можно указать позже — в истории движений товара.">
+              <InputNumber style={{ width: '100%' }} min={0.01} step={100} />
             </Form.Item>
           )}
           <Form.Item name="note" label="Примечание">

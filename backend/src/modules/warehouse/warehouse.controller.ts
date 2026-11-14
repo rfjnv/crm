@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { hasCostAccess } from '../../lib/costAccess';
+import { COST_ACCESS_REQUIRED, hasCostAccess } from '../../lib/costAccess';
 import { Role } from '@prisma/client';
 import XLSX from 'xlsx';
 import { warehouseService } from './warehouse.service';
@@ -149,8 +149,16 @@ export class WarehouseController {
 
   // Movements
   async createMovement(req: Request, res: Response): Promise<void> {
-    const movement = await warehouseService.createMovement(req.body, req.user!.userId as string);
+    const movement = await warehouseService.createMovement(req.body, req.user!.userId as string, hasCostAccess(req.user));
     res.status(201).json(movement);
+  }
+
+  async setMovementUnitCost(req: Request, res: Response): Promise<void> {
+    if (!hasCostAccess(req.user)) {
+      throw new AppError(403, 'Цена закупки — себестоимость. Откройте её по ПИН-коду.', COST_ACCESS_REQUIRED);
+    }
+    const movement = await warehouseService.setMovementUnitCost(req.params.id as string, req.body.unitCost, req.user!.userId as string);
+    res.json(movement);
   }
 
   async getMovements(req: Request, res: Response): Promise<void> {

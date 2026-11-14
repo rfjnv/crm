@@ -76,6 +76,13 @@ export const createMovementDto = z.object({
   affectStock: z.boolean().optional(),
   /** Кол-во рулонов для товаров с параллельным учётом в рулонах (напр. ламинационная плёнка). Прибавляется к Product.rollStock при типе IN. */
   rollQuantity: z.number().positive('Количество рулонов должно быть положительным').optional(),
+  /** Цена закупки за единицу по этому приходу. Принимается только с доступом к себестоимости. */
+  unitCost: z.number().positive('Цена закупки должна быть положительной').optional(),
+});
+
+/** Цена закупки уже оформленного прихода — по документу поставщика, который пришёл позже. */
+export const setMovementUnitCostDto = z.object({
+  unitCost: z.number().positive('Цена закупки должна быть положительной').nullable(),
 });
 
 export const correctStockDto = z.object({
@@ -96,6 +103,7 @@ export const createReservationDto = z.object({
 export type CreateProductDto = z.infer<typeof createProductDto>;
 export type UpdateProductDto = z.infer<typeof updateProductDto>;
 export type CreateMovementDto = z.infer<typeof createMovementDto>;
+export type SetMovementUnitCostDto = z.infer<typeof setMovementUnitCostDto>;
 export type CorrectStockDto = z.infer<typeof correctStockDto>;
 export type CreateReservationDto = z.infer<typeof createReservationDto>;
 

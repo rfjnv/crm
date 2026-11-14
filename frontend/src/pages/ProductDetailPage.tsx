@@ -26,6 +26,7 @@ import ProductAuditHistoryPanel from '../components/ProductAuditHistoryPanel';
 import { ClientCompanyDisplay } from '../components/ClientCompanyDisplay';
 import ReceiptPunchedTag from '../components/ReceiptPunchedTag';
 import StockBalanceCell from '../components/StockBalanceCell';
+import MovementUnitCostCell from '../components/MovementUnitCostCell';
 
 /** Товары с параллельным остатком в рулонах (ламинация) показываем как «N рул. (кг)». */
 function formatStockCell(stock: number | string | null | undefined, rollStock?: number | string | null): string {
@@ -428,6 +429,13 @@ export default function ProductDetailPage() {
                   return n != null && Number.isFinite(n) && n > 0 ? n : '—';
                 },
               },
+              ...(costOpen ? [{
+                title: 'Цена закупки',
+                key: 'unitCost',
+                width: 140,
+                align: 'right' as const,
+                render: (_v: unknown, r: any) => <MovementUnitCostCell movement={r} />,
+              }] : []),
               {
                 title: 'Было → Стало',
                 key: 'balance',

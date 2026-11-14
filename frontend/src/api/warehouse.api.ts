@@ -66,8 +66,12 @@ export const inventoryApi = {
       )
       .then((r) => r.data),
 
-  createMovement: (data: { productId: string; type: 'IN' | 'OUT'; quantity: number; dealId?: string; note?: string; affectStock?: boolean; rollQuantity?: number }) =>
+  createMovement: (data: { productId: string; type: 'IN' | 'OUT'; quantity: number; dealId?: string; note?: string; affectStock?: boolean; rollQuantity?: number; unitCost?: number }) =>
     client.post<InventoryMovement>('/inventory/movements', data).then((r) => r.data),
+
+  /** Цена закупки прихода; null — убрать. Только с открытой себестоимостью (ПИН). */
+  setMovementUnitCost: (id: string, unitCost: number | null) =>
+    client.patch<InventoryMovement>(`/inventory/movements/${id}/unit-cost`, { unitCost }).then((r) => r.data),
 
   listMovements: (filters?: {
     productId?: string;

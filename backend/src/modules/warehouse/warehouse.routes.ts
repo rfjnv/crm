@@ -5,7 +5,7 @@ import { authenticate } from '../../middleware/authenticate';
 import { authorize, requirePermission } from '../../middleware/authorize';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { createProductDto, updateProductDto, createMovementDto, correctStockDto, createReservationDto } from './warehouse.dto';
+import { createProductDto, updateProductDto, createMovementDto, setMovementUnitCostDto, correctStockDto, createReservationDto } from './warehouse.dto';
 
 const router = Router();
 
@@ -69,6 +69,7 @@ router.get('/products/:id/reservations', asyncHandler(warehouseController.getPro
 
 // Movements — warehouse roles + admin
 router.post('/movements', requirePermission('create_inventory_in'), validate(createMovementDto), asyncHandler(warehouseController.createMovement.bind(warehouseController)));
+router.patch('/movements/:id/unit-cost', validate(setMovementUnitCostDto), asyncHandler(warehouseController.setMovementUnitCost.bind(warehouseController)));
 router.get('/movements', asyncHandler(warehouseController.getMovements.bind(warehouseController)));
 
 // Import

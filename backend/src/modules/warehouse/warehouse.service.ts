@@ -438,7 +438,8 @@ export class WarehouseService {
 
   // ==================== MOVEMENTS ====================
 
-  async createMovement(dto: CreateMovementDto, userId: string) {
+  /** @param canSeeCost цену закупки прихода принимаем только с открытой себестоимостью (ПИН). */
+  async createMovement(dto: CreateMovementDto, userId: string, canSeeCost = false) {
     const product = await prisma.product.findUnique({ where: { id: dto.productId } });
     if (!product || !product.isActive) {
       throw new AppError(404, 'Товар не найден или неактивен');
@@ -454,6 +455,7 @@ export class WarehouseService {
     // Рулоны пишем отдельной колонкой (а не только в текст примечания) — так они
     // видны как самостоятельная величина в истории движений и деталях товара.
     const rollQuantity = dto.rollQuantity != null && product.rollStock != null ? dto.rollQuantity : null;
+    const unitCost = canSeeCost && dto.type === 'IN' && dto.unitCost != null ? dto.unitCost : null;
 
     const stockBefore = Number(product.stock);
     const rollBefore = product.rollStock != null ? Number(product.rollStock) : null;
@@ -506,6 +508,7 @@ export class WarehouseService {
           type: dto.type,
           quantity: dto.quantity,
           rollQuantity,
+          unitCost,
           stockBefore,
           stockAfter,
           rollStockBefore: rollBefore,
@@ -523,6 +526,11 @@ export class WarehouseService {
         },
       });
 
+      // Цена последней поставки — она же цена закупки товара (себестоимость в аналитике).
+      if (unitCost != null) {
+        await tx.product.update({ where: { id: dto.productId }, data: { purchasePrice: unitCost } });
+      }
+
       // Audit log
       await auditLog({
         userId,
@@ -534,6 +542,7 @@ export class WarehouseService {
           productName: movement.product.name,
           type: dto.type,
           quantity: dto.quantity,
+          ...(unitCost != null ? { unitCost } : {}),
           newStock: movement.product.stock,
           dealId: dto.dealId,
         },
@@ -653,6 +662,37 @@ export class WarehouseService {
       rollStockAsOf: r.known && r.roll_stock_as_of != null ? Number(r.roll_stock_as_of) : null,
       known: r.known,
     }));
+  }
+
+  /**
+   * Цена закупки уже оформленного прихода (документ поставщика пришёл позже прихода).
+   * Цена закупки товара = цена самого позднего прихода, у которого она указана.
+   */
+  async setMovementUnitCost(movementId: string, unitCost: number | null, userId: string) {
+    const movement = await prisma.inventoryMovement.findUnique({ where: { id: movementId } });
+    if (!movement) throw new AppError(404, 'Движение не найдено');
+    if (movement.type !== 'IN') throw new AppError(400, 'Цену закупки можно указать только у прихода');
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.inventoryMovement.update({ where: { id: movementId }, data: { unitCost } });
+      const latest = await tx.inventoryMovement.findFirst({
+        where: { productId: movement.productId, type: 'IN', unitCost: { not: null } },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { unitCost: true },
+      });
+      if (latest) {
+        await tx.product.update({ where: { id: movement.productId }, data: { purchasePrice: latest.unitCost } });
+      }
+      await auditLog({
+        userId,
+        action: 'UPDATE',
+        entityType: 'inventory_movement',
+        entityId: movementId,
+        before: { unitCost: movement.unitCost != null ? Number(movement.unitCost) : null },
+        after: { unitCost },
+      });
+      return updated;
+    });
   }
 
   async getProductMovements(productId: string) {
