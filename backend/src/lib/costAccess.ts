@@ -46,7 +46,8 @@ export function isCostKey(key: string): boolean {
 }
 
 /** Строка, в которой явно лежит себестоимость (JSON товара, приведённый к тексту и т.п.). */
-const COST_TEXT_RE = /purchase_?price|cost_?price/i;
+// unit_cost — цена закупки в приходе (inventory_movements); «цена закупки» — то же словами.
+const COST_TEXT_RE = /purchase_?price|cost_?price|unit_?cost|цен[аы] закупки/i;
 
 const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
 const isScalarNumber = (v: unknown) =>
@@ -105,7 +106,7 @@ export function stripCostDeep(value: unknown): unknown {
  * (там закупочные цены за единицу) или целые строки товаров (`p.*`, `to_jsonb(p)` —
  * их результат потом вычищается `stripCostDeep`, но и сам запрос лучше не пускать).
  */
-const COST_SQL_RE = /purchase_price|cost_price|\bimport_order_items\b|\bimport_orders\b|\bcogs\b|\bmargin/i;
+const COST_SQL_RE = /purchase_price|cost_price|unit_cost|\bimport_order_items\b|\bimport_orders\b|\bcogs\b|\bmargin/i;
 
 export function isCostSql(sql: string): boolean {
   return COST_SQL_RE.test(sql);
