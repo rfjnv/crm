@@ -70,6 +70,7 @@ const CashboxV2Page = lazy(() => import('./pages/CashboxV2Page'));
 const DealChangesPage = lazy(() => import('./pages/DealChangesPage'));
 const PaymentRequestsPage = lazy(() => import('./pages/PaymentRequestsPage'));
 const CompanyBalancePage = lazy(() => import('./pages/CompanyBalancePage'));
+const FinanceReportPage = lazy(() => import('./pages/FinanceReportPage'));
 const ContractDetailPage = lazy(() => import('./pages/ContractDetailPage'));
 const PowerOfAttorneyPage = lazy(() => import('./pages/PowerOfAttorneyPage'));
 const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage'));
@@ -318,6 +319,10 @@ export default function App() {
                 </Route>
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER']} />}>
                   <Route path="/finance/balance" element={<MoneyAccessGuard><CompanyBalancePage /></MoneyAccessGuard>} />
+                </Route>
+                {/* Себестоимость и прибыль: только админы, данные — ещё и по ПИН себестоимости. */}
+                <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN']} />}>
+                  <Route path="/finance/report" element={<MoneyAccessGuard><FinanceReportPage /></MoneyAccessGuard>} />
                 </Route>
                 <Route path="/almanac/sales" element={<AlmanacSalesPage />} />
                 <Route path="/almanac/clients" element={<AlmanacClientsPage />} />

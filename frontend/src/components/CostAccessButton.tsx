@@ -30,7 +30,7 @@ const PIN_RULES = [
  * Закрыто — замок; клик → ввод личного ПИН на 10 минут или на час.
  * Открыто — обратный отсчёт; клик закрывает досрочно.
  */
-export default function CostAccessButton() {
+export default function CostAccessButton({ label }: { label?: string } = {}) {
   const cost = useCostAccess();
   const modern = useThemeStore((s) => s.design) === 'modern';
   const queryClient = useQueryClient();
@@ -94,15 +94,25 @@ export default function CostAccessButton() {
 
   return (
     <>
-      <Tooltip title="Себестоимость закрыта">
+      {label ? (
         <Button
-          type="text"
-          className={modern ? `${APP_BUTTON} hdr-btn` : APP_BUTTON}
-          icon={modern ? <LockSimple size={19} /> : <LockOutlined />}
-          aria-label="Открыть себестоимость"
+          type="primary"
+          icon={<LockOutlined />}
           onClick={() => setModal(cost.hasPin ? 'unlock' : 'setPin')}
-        />
-      </Tooltip>
+        >
+          {label}
+        </Button>
+      ) : (
+        <Tooltip title="Себестоимость закрыта">
+          <Button
+            type="text"
+            className={modern ? `${APP_BUTTON} hdr-btn` : APP_BUTTON}
+            icon={modern ? <LockSimple size={19} /> : <LockOutlined />}
+            aria-label="Открыть себестоимость"
+            onClick={() => setModal(cost.hasPin ? 'unlock' : 'setPin')}
+          />
+        </Tooltip>
+      )}
 
       <Modal
         open={modal === 'unlock'}

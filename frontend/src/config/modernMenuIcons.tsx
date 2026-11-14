@@ -100,6 +100,7 @@ const ICON_BY_KEY: Record<string, Icon> = {
   '/finance/expenses': Wallet,
   '/finance/cashbox': CashRegister,
   '/finance/balance': Bank,
+  '/finance/report': ChartBar,
   '/foreign-trade/suppliers': Factory,
   '/foreign-trade/map': GlobeHemisphereEast,
   '/foreign-trade/import-orders': Boat,

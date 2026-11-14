@@ -37,6 +37,7 @@ import {
   CheckSquareOutlined,
   MessageOutlined,
   WalletOutlined,
+  LineChartOutlined,
   InboxOutlined,
   ProjectOutlined,
   SolutionOutlined,
@@ -656,6 +657,13 @@ export default function Layout() {
         key: '/finance/balance',
         icon: <DollarOutlined />,
         label: <Link to="/finance/balance">Баланс компании</Link>,
+      }]
+      : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN')
+      ? [{
+        key: '/finance/report',
+        icon: <LineChartOutlined />,
+        label: <Link to="/finance/report">Финансовый отчёт</Link>,
       }]
       : []),
 
