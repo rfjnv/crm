@@ -71,6 +71,7 @@ router.get('/products/:id/reservations', asyncHandler(warehouseController.getPro
 router.post('/movements', requirePermission('create_inventory_in'), validate(createMovementDto), asyncHandler(warehouseController.createMovement.bind(warehouseController)));
 router.patch('/movements/:id/unit-cost', validate(setMovementUnitCostDto), asyncHandler(warehouseController.setMovementUnitCost.bind(warehouseController)));
 router.get('/movements', asyncHandler(warehouseController.getMovements.bind(warehouseController)));
+router.get('/receipts', authorize('SUPER_ADMIN', 'ADMIN'), asyncHandler(warehouseController.getReceipts.bind(warehouseController)));
 
 // Import
 router.post('/import-excel',

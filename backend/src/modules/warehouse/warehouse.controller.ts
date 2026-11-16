@@ -161,6 +161,15 @@ export class WarehouseController {
     res.json(movement);
   }
 
+  async getReceipts(req: Request, res: Response): Promise<void> {
+    if (!hasCostAccess(req.user)) {
+      throw new AppError(403, 'Поступления с ценами закупки — себестоимость. Откройте её по ПИН-коду.', COST_ACCESS_REQUIRED);
+    }
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+    const rows = await warehouseService.getReceipts({ from: str(req.query.from), to: str(req.query.to), search: str(req.query.search) });
+    res.json(rows);
+  }
+
   async getMovements(req: Request, res: Response): Promise<void> {
     const movements = await warehouseService.getMovements({
       productId: req.query.productId as string | undefined,

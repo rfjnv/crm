@@ -228,6 +228,7 @@ function tree(a: MenuAccess): { key: string; title?: string; items: DraftNode[] 
         { key: '/finance/expenses', to: '/finance/expenses', text: 'Расходы', icon: Wallet, show: hasPermission('manage_expenses') },
         { key: '/finance/balance', to: '/finance/balance', text: 'Баланс компании', icon: Bank, show: hasRole('SUPER_ADMIN', 'ADMIN', 'WAREHOUSE_MANAGER') },
         { key: '/finance/report', to: '/finance/report', text: 'Финансовый отчёт', icon: ChartBar, show: hasRole('SUPER_ADMIN', 'ADMIN') },
+        { key: '/finance/receipts', to: '/finance/receipts', text: 'Поступления', icon: Receipt, show: hasRole('SUPER_ADMIN', 'ADMIN') },
       ],
     },
     {

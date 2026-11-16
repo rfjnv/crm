@@ -552,6 +552,59 @@ export class WarehouseService {
     });
   }
 
+  /**
+   * Поступления на склад (приходы без сделки) с ценой закупки — для страницы «Поступления».
+   * Даты — дни по Ташкенту. Возвраты по сделкам (IN со сделкой) сюда не входят.
+   */
+  async getReceipts(filters: { from?: string; to?: string; search?: string }) {
+    const where: Prisma.InventoryMovementWhereInput = { type: 'IN', dealId: null };
+    if (filters.from || filters.to) {
+      where.createdAt = {
+        ...(filters.from ? { gte: new Date(`${filters.from}T00:00:00+05:00`) } : {}),
+        ...(filters.to ? { lte: new Date(`${filters.to}T23:59:59.999+05:00`) } : {}),
+      };
+    }
+    if (filters.search?.trim()) {
+      const q = filters.search.trim();
+      where.OR = [
+        { product: { name: { contains: q, mode: 'insensitive' } } },
+        { product: { sku: { contains: q, mode: 'insensitive' } } },
+        { product: { category: { contains: q, mode: 'insensitive' } } },
+        { note: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+    const rows = await prisma.inventoryMovement.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 3000,
+      include: { product: { select: { id: true, sku: true, name: true, unit: true, category: true } } },
+    });
+    const userIds = [...new Set(rows.map((r) => r.createdBy))];
+    const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } });
+    const nameById = new Map(users.map((u) => [u.id, u.fullName]));
+    /** Что это за приход — по примечанию: поставка, запись для истории, возврат, обмен, коррекция. */
+    const kindOf = (note: string | null) => {
+      const n = (note ?? '').toLowerCase();
+      if (/без изменения остатка|архив/.test(n)) return 'HISTORY';
+      if (/возврат/.test(n)) return 'RETURN';
+      if (/обмен|замена/.test(n)) return 'EXCHANGE';
+      if (/коррекц|инвентар|хвост/.test(n)) return 'CORRECTION';
+      return 'SUPPLY';
+    };
+    return rows.map((r) => ({
+      id: r.id,
+      type: r.type,
+      createdAt: r.createdAt,
+      product: r.product,
+      quantity: r.quantity,
+      rollQuantity: r.rollQuantity,
+      unitCost: r.unitCost,
+      note: r.note,
+      kind: kindOf(r.note),
+      creatorName: nameById.get(r.createdBy) ?? null,
+    }));
+  }
+
   async getMovements(filters?: {
     productId?: string;
     type?: 'IN' | 'OUT' | 'CORRECTION';

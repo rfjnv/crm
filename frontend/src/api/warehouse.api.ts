@@ -1,6 +1,22 @@
 import client from './client';
 import type { Product, InventoryMovement, DashboardSummary, Deal, RevenueTodayResponse, ProductAnalytics, ProductReservation } from '../types';
 
+/** Приход на склад для страницы «Поступления». */
+export interface ReceiptRow {
+  id: string;
+  type: 'IN';
+  createdAt: string;
+  product: { id: string; sku: string; name: string; unit: string; category: string | null };
+  quantity: string | number;
+  rollQuantity: string | number | null;
+  /** Цена закупки за единицу; null — не указана. */
+  unitCost: string | number | null;
+  note: string | null;
+  /** SUPPLY — поставка, HISTORY — запись для истории, RETURN — возврат, EXCHANGE — обмен, CORRECTION — коррекция. */
+  kind: 'SUPPLY' | 'HISTORY' | 'RETURN' | 'EXCHANGE' | 'CORRECTION';
+  creatorName: string | null;
+}
+
 export const inventoryApi = {
   listProducts: () => client.get<Product[]>('/inventory/products').then((r) => r.data),
 
@@ -68,6 +84,10 @@ export const inventoryApi = {
 
   createMovement: (data: { productId: string; type: 'IN' | 'OUT'; quantity: number; dealId?: string; note?: string; affectStock?: boolean; rollQuantity?: number; unitCost?: number }) =>
     client.post<InventoryMovement>('/inventory/movements', data).then((r) => r.data),
+
+  /** Поступления на склад с ценой закупки (страница «Поступления»). Только админы с ПИН. */
+  listReceipts: (params: { from?: string; to?: string; search?: string }) =>
+    client.get<ReceiptRow[]>('/inventory/receipts', { params }).then((r) => r.data),
 
   /** Цена закупки прихода; null — убрать. Только с открытой себестоимостью (ПИН). */
   setMovementUnitCost: (id: string, unitCost: number | null) =>

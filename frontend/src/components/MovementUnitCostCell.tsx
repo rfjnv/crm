@@ -10,7 +10,7 @@ import type { InventoryMovement } from '../types';
  * Цена закупки прихода в истории движений: показывает и даёт поправить по документу
  * поставщика. Рисуется только с открытой себестоимостью — без неё сервер цену не отдаёт.
  */
-export default function MovementUnitCostCell({ movement }: { movement: InventoryMovement }) {
+export default function MovementUnitCostCell({ movement }: { movement: Pick<InventoryMovement, 'id' | 'type' | 'unitCost'> }) {
   const queryClient = useQueryClient();
   const current = movement.unitCost != null ? Number(movement.unitCost) : null;
   const [open, setOpen] = useState(false);
@@ -21,6 +21,7 @@ export default function MovementUnitCostCell({ movement }: { movement: Inventory
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product-movements'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-receipts'] });
       message.success('Цена закупки сохранена');
       setOpen(false);
     },

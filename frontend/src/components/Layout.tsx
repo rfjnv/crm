@@ -664,6 +664,10 @@ export default function Layout() {
         key: '/finance/report',
         icon: <LineChartOutlined />,
         label: <Link to="/finance/report">Финансовый отчёт</Link>,
+      }, {
+        key: '/finance/receipts',
+        icon: <InboxOutlined />,
+        label: <Link to="/finance/receipts">Поступления</Link>,
       }]
       : []),
 
