@@ -15,15 +15,17 @@ export type CompetitorPriceDate = {
 };
 
 export const COMPETITOR_PRICE_DATES: CompetitorPriceDate[] = [
-  { competitor: 'Yann', date: '2026-09-07' },
+  { competitor: 'Yann', date: '2026-11-01' },
   { competitor: 'Bit Trade', date: null, note: 'старый прайс, внесён до 22.04.2026' },
   { competitor: 'Avanta Trade', date: '2026-10-13' },
-  { competitor: 'Foil Trading', date: '2026-09-21' },
+  { competitor: 'Foil Trading', date: '2026-09-21', note: 'прайс от 21.09 прислан повторно 18.11 — цены те же' },
   { competitor: 'Paper World', date: '2026-10-02', scope: 'мелованная бумага' },
   { competitor: 'Paper World', date: '2026-09-18', scope: 'картон' },
-  { competitor: 'Paper World', date: '2026-06-15', scope: 'плёнка и гребёнки' },
+  { competitor: 'Paper World', date: '2026-10-24', scope: 'плёнка и гребёнки' },
   { competitor: 'AVA-TEN', date: '2026-10-20' },
   { competitor: 'Alfa Karton Savdo', date: '2026-10-12' },
-  { competitor: 'Poytaxt Group', date: '2026-10-19' },
-  { competitor: 'Mars Paper', date: '2026-10-30', note: 'скриншоты прайса' },
+  { competitor: 'Poytaxt Group', date: '2026-11-01', scope: 'бумага и самоклейка', note: 'прайс «Ноябрь 2026»' },
+  { competitor: 'Poytaxt Group', date: '2026-10-19', scope: 'картон и лайнеры' },
+  { competitor: 'Mars Paper', date: '2026-11-01', note: 'прайс «Ноябрь 2026»' },
+  { competitor: 'Poli Text', date: '2026-11-18', scope: 'пустые пластины', note: 'дата в прайсе не указана — день получения' },
 ];
