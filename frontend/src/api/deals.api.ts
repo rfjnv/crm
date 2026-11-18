@@ -176,6 +176,10 @@ export const dealsApi = {
   }) =>
     client.post<Deal>(`/deals/${dealId}/send-to-finance`, data).then((r) => r.data),
 
+  /** Смена ИНН перечисления до закрытия сделки; посты в группах перепубликуются. */
+  changeTransferInn: (dealId: string, transferInn: string) =>
+    client.patch<Deal>(`/deals/${dealId}/transfer-inn`, { transferInn }).then((r) => r.data),
+
   /** Смена способа оплаты с «Долг» на фактический (доступно и для закрытых сделок). */
   changePaymentMethod: (dealId: string, data: {
     paymentMethod: Exclude<PaymentMethod, 'DEBT'>;

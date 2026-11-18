@@ -18,6 +18,7 @@ import { inventoryApi } from '../api/warehouse.api';
 import { usersApi } from '../api/users.api';
 import { clientsApi } from '../api/clients.api';
 import { innRegistryApi } from '../api/innRegistry.api';
+import InnLegalNameHint from '../components/InnLegalNameHint';
 import { contractsApi } from '../api/contracts.api';
 import { financeApi } from '../api/finance.api';
 import DealStatusTag from '../components/DealStatusTag';
@@ -89,6 +90,8 @@ export default function DealDetailPage() {
   const [editingPayment, setEditingPayment] = useState<{ id: string } | null>(null);
   const [sendToFinanceModal, setSendToFinanceModal] = useState(false);
   const [changeDebtPaymentModal, setChangeDebtPaymentModal] = useState(false);
+  const [innModalOpen, setInnModalOpen] = useState(false);
+  const [newInn, setNewInn] = useState('');
   const [debtPaymentChangeMode, setDebtPaymentChangeMode] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [transferPaymentModal, setTransferPaymentModal] = useState(false);
@@ -394,6 +397,21 @@ export default function DealDetailPage() {
     },
   });
 
+  const changeTransferInnMut = useMutation({
+    mutationFn: (inn: string) => dealsApi.changeTransferInn(id!, inn),
+    onSuccess: (result) => {
+      queryClient.setQueryData(['deal', id], result);
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['inn-names'] });
+      setInnModalOpen(false);
+      message.success('ИНН изменён, посты в группах обновлены');
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Ошибка';
+      message.error(msg);
+    },
+  });
+
   const changePaymentMethodMut = useMutation({
     mutationFn: (data: Parameters<typeof dealsApi.changePaymentMethod>[1]) =>
       dealsApi.changePaymentMethod(id!, data),
@@ -654,6 +672,10 @@ export default function DealDetailPage() {
   // не только оформленной в долг (после сохранения пост перепостится в группы Telegram).
   const canChangePaymentMethod =
     isAdmin || role === 'MANAGER' || actsAsAccountant || role === 'WAREHOUSE_MANAGER';
+  // ИНН перечисления меняют менеджер, бухгалтер и админ — до закрытия сделки, даже с договором.
+  const canChangeTransferInn = !isDealClosed && !deal.isArchived
+    && (deal.paymentMethod === 'TRANSFER' || deal.paymentMethod === 'INSTALLMENT')
+    && (isAdmin || role === 'MANAGER' || actsAsAccountant);
   const changePaymentMethodLabel =
     deal.paymentMethod === 'DEBT' ? 'Уточнить способ оплаты' : 'Изменить способ оплаты';
   // Manager/admin can add or remove deal items in any status until the deal is closed or canceled
@@ -1267,11 +1289,23 @@ export default function DealDetailPage() {
                   </Space>
                 </Descriptions.Item>
               )}
-              {deal.paymentMethod === 'TRANSFER' && deal.transferInn && (
+              {(deal.paymentMethod === 'TRANSFER' || deal.paymentMethod === 'INSTALLMENT') && (deal.transferInn || canChangeTransferInn) && (
                 <>
                   <Descriptions.Item label="ИНН (перечисление)">
-                    <Typography.Text code>{deal.transferInn}</Typography.Text>
-                    {innLegalName(deal.transferInn) && <Typography.Text style={{ marginLeft: 8 }}>{innLegalName(deal.transferInn)}</Typography.Text>}
+                    {deal.transferInn ? <Typography.Text code>{deal.transferInn}</Typography.Text> : <Typography.Text type="secondary">не указан</Typography.Text>}
+                    {deal.transferInn && innLegalName(deal.transferInn) && <Typography.Text style={{ marginLeft: 8 }}>{innLegalName(deal.transferInn)}</Typography.Text>}
+                    {canChangeTransferInn && (
+                      <Button
+                        size="small"
+                        type="link"
+                        onClick={() => {
+                          setNewInn(deal.transferInn ?? '');
+                          setInnModalOpen(true);
+                        }}
+                      >
+                        Изменить ИНН
+                      </Button>
+                    )}
                   </Descriptions.Item>
                   {deal.transferDocuments && Array.isArray(deal.transferDocuments) && (
                     <Descriptions.Item label="Документы">
@@ -2595,6 +2629,7 @@ export default function DealDetailPage() {
               onChange={(e) => setTransferInn(e.target.value)}
               maxLength={50}
             />
+            <div style={{ marginTop: 6 }}><InnLegalNameHint inn={transferInn} /></div>
             {!(dealData?.client?.inn || '').trim() && (clientTransferInns?.length || 0) > 1 && (
               <div style={{ marginTop: 8 }}>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -2635,6 +2670,41 @@ export default function DealDetailPage() {
             </Radio.Group>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Смена ИНН перечисления */}
+      <Modal
+        title="Изменить ИНН перечисления"
+        open={innModalOpen}
+        onCancel={() => setInnModalOpen(false)}
+        onOk={() => {
+          const v = newInn.trim();
+          if (!/^\d{9}$|^\d{14}$/.test(v.replace(/\s/g, ''))) {
+            message.warning('ИНН — 9 цифр (организация) или 14 цифр (ПИНФЛ)');
+            return;
+          }
+          changeTransferInnMut.mutate(v.replace(/\s/g, ''));
+        }}
+        confirmLoading={changeTransferInnMut.isPending}
+        okText="Сохранить"
+        cancelText="Отмена"
+        destroyOnHidden
+      >
+        <Form layout="vertical">
+          <Form.Item label="Новый ИНН" required>
+            <Input
+              autoFocus
+              placeholder="9 цифр"
+              value={newInn}
+              onChange={(e) => setNewInn(e.target.value)}
+              maxLength={20}
+            />
+            <div style={{ marginTop: 6 }}><InnLegalNameHint inn={newInn} /></div>
+          </Form.Item>
+        </Form>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Бухгалтер получит уведомление, старые посты в группах удалятся и появятся заново с новым ИНН.
+        </Typography.Text>
       </Modal>
 
       {/* Shipment Modal */}

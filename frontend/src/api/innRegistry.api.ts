@@ -50,6 +50,11 @@ export const innRegistryApi = {
     client
       .post<{ checked: number; found: number; left: number }>('/inn-registry/lookup-missing', { limit }, { timeout: 120000 })
       .then((r) => r.data),
+  /** Юр. название по одному ИНН (реестр или orginfo.uz) — подсказка при вводе. */
+  legalName: (inn: string) =>
+    client
+      .get<{ inn: string; legalName: string | null; status: string }>(`/inn-registry/name/${encodeURIComponent(inn)}`, { timeout: 20000 })
+      .then((r) => r.data),
   names: (inns: string[]) =>
     inns.length === 0
       ? Promise.resolve({} as Record<string, string>)

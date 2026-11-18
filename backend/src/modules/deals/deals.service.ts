@@ -37,7 +37,7 @@ import {
 import {
   CreateDealDto, UpdateDealDto, CreateCommentDto, PaymentDto,
   AddDealItemDto, WarehouseResponseDto, SetItemQuantitiesDto,
-  ShipmentDto, FinanceRejectDto, SendToFinanceDto, ChangePaymentMethodDto,
+  ShipmentDto, FinanceRejectDto, SendToFinanceDto, ChangePaymentMethodDto, ChangeTransferInnDto,
   CreatePaymentRecordDto, UpdatePaymentRecordDto, ShipmentHoldDto,
   SuperOverrideDealDto,
   WarehouseOverrideDealDto,
@@ -1367,6 +1367,54 @@ export class DealsService {
   }
 
   /** Смена способа оплаты сделки (в т.ч. уточнение «Долга» и после закрытия сделки). */
+  /**
+   * Смена ИНН перечисления до закрытия сделки (в т.ч. с привязанным договором).
+   * Посты в группах перепубликуются с новым ИНН, бухгалтеру уходит уведомление (accounting-changes).
+   */
+  async changeTransferInn(dealId: string, dto: ChangeTransferInnDto, user: AuthUser) {
+    if (!hasRole(user, 'MANAGER', 'ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT')) {
+      throw new AppError(403, 'Недостаточно прав для изменения ИНН');
+    }
+    const deal = await prisma.deal.findFirst({
+      where: { id: dealId, ...ownerScope(user), isArchived: false },
+    });
+    if (!deal) throw new AppError(404, 'Сделка не найдена');
+    if (deal.status === 'CLOSED' || deal.status === 'CANCELED') {
+      throw new AppError(400, 'Сделка закрыта — ИНН менять нельзя');
+    }
+    if (deal.paymentMethod !== 'TRANSFER' && deal.paymentMethod !== 'INSTALLMENT') {
+      throw new AppError(400, 'ИНН указывается только для перечисления или рассрочки');
+    }
+    const transferInn = dto.transferInn.trim();
+    if (!/^\d{9}$|^\d{14}$/.test(transferInn.replace(/\s/g, ''))) {
+      throw new AppError(400, 'ИНН — 9 цифр (организация) или 14 цифр (ПИНФЛ)');
+    }
+    const oldInn = deal.transferInn?.trim() || null;
+    if (oldInn === transferInn) throw new AppError(400, 'Это тот же ИНН');
+
+    await prisma.deal.update({ where: { id: dealId }, data: { transferInn } });
+    lookupInBackgroundIfUnknown(transferInn);
+
+    await auditLog({
+      userId: user.userId,
+      action: 'UPDATE',
+      entityType: 'deal',
+      entityId: dealId,
+      before: { transferInn: oldInn },
+      after: { transferInn },
+    });
+
+    // Старые посты в группах удаляются, новые — с новым ИНН и пометкой об изменении.
+    void syncDealTelegramGroupMessages(dealId, {
+      repost: true,
+      footnote: `ИНН изменён: ${oldInn ?? '—'} → ${transferInn}`,
+    }).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages (inn):', err);
+    });
+
+    return this.findById(dealId, user);
+  }
+
   async changePaymentMethod(dealId: string, dto: ChangePaymentMethodDto, user: AuthUser) {
     const allowedRoles: Role[] = ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT', 'WAREHOUSE_MANAGER'];
     if (!hasRole(user, ...allowedRoles)) {
@@ -3469,6 +3517,26 @@ export class DealsService {
       before: { isArchived: false },
       after: { isArchived: true },
     });
+
+    // Сделку убрали — об этом должны узнать группы (склад, бухгалтерия, производство) и менеджер.
+    const actor = await prisma.user.findUnique({ where: { id: user.userId }, select: { fullName: true } });
+    const who = actor?.fullName ?? 'администратор';
+    void syncDealTelegramGroupMessages(id, {
+      repost: true,
+      footnote: `❌ Сделка отменена (в архиве) — ${who}. Не выполнять.`,
+    }).catch((err) => {
+      console.error('[Telegram deal groups] syncDealTelegramGroupMessages (archive):', err);
+    });
+    if (deal.managerId && deal.managerId !== user.userId) {
+      const payload = {
+        title: 'Сделка отменена',
+        body: `${who} отправил(а) в архив сделку «${deal.title}»`,
+        url: `/deals/${id}`,
+        severity: 'URGENT' as const,
+      };
+      pushService.sendPushToUser(deal.managerId, payload).catch(() => {});
+      telegramService.sendToUser(deal.managerId, payload).catch(() => {});
+    }
 
     return updated;
   }

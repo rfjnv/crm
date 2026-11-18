@@ -143,6 +143,11 @@ export class DealsController {
     res.json(deal);
   }
 
+  async changeTransferInn(req: Request, res: Response): Promise<void> {
+    const deal = await dealsService.changeTransferInn(req.params.id as string, req.body, getUser(req));
+    res.json(deal);
+  }
+
   async changePaymentMethod(req: Request, res: Response): Promise<void> {
     const deal = await dealsService.changePaymentMethod(req.params.id as string, req.body, getUser(req));
     res.json(deal);

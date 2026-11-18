@@ -4,11 +4,13 @@ import { authenticate } from '../../middleware/authenticate';
 import { authorize } from '../../middleware/authorize';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { AppError } from '../../lib/errors';
+import prisma from '../../lib/prisma';
 import {
   buildInnReconciliation,
   getLegalNames,
   lookupInn,
   lookupMissing,
+  normalizeInn,
   setLegalName,
 } from './inn-registry.service';
 
@@ -20,6 +22,31 @@ router.get('/names', asyncHandler(async (req, res) => {
   const raw = String(req.query.inn ?? '');
   const inns = raw.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 100);
   res.json(await getLegalNames(inns));
+}));
+
+/**
+ * Юр. название по одному ИНН — подсказка при вводе (всем сотрудникам).
+ * Сначала реестр; если там нет — один запрос на orginfo.uz (не чаще раза в сутки на ИНН).
+ */
+router.get('/name/:inn', asyncHandler(async (req, res) => {
+  const inn = normalizeInn(req.params.inn as string);
+  if (!/^\d{9}$|^\d{14}$/.test(inn)) {
+    res.json({ inn, legalName: null, status: 'bad_format' });
+    return;
+  }
+  const known = await prisma.innRegistry.findUnique({ where: { inn } });
+  if (known?.legalName) {
+    res.json({ inn, legalName: known.legalName, status: 'found' });
+    return;
+  }
+  const recentlyChecked = known?.lookedUpAt && Date.now() - known.lookedUpAt.getTime() < 24 * 3600 * 1000
+    && known.lookupStatus === 'not_found';
+  if (recentlyChecked) {
+    res.json({ inn, legalName: null, status: 'not_found' });
+    return;
+  }
+  const row = await lookupInn(inn).catch(() => null);
+  res.json({ inn, legalName: row?.legalName ?? null, status: row?.legalName ? 'found' : (row?.lookupStatus ?? 'error') });
 }));
 
 router.get('/', authorize('SUPER_ADMIN', 'ADMIN'), asyncHandler(async (_req, res) => {

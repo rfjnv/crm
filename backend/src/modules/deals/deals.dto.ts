@@ -127,6 +127,10 @@ export const changePaymentMethodDto = z.object({
   transferType: z.enum(['ONE_TIME', 'ANNUAL']).optional(),
 });
 
+export const changeTransferInnDto = z.object({
+  transferInn: z.string().trim().min(1, 'Укажите ИНН').max(50),
+});
+
 export const sendToFinanceDto = z.object({
   paymentMethod: z.enum(['CASH', 'PAYME', 'QR', 'TRANSFER', 'CLICK', 'TERMINAL', 'INSTALLMENT']),
   transferInn: z.string().optional(),
@@ -195,6 +199,7 @@ export type AddDealItemDto = z.infer<typeof addDealItemDto>;
 export type WarehouseResponseDto = z.infer<typeof warehouseResponseDto>;
 export type SetItemQuantitiesDto = z.infer<typeof setItemQuantitiesDto>;
 export type ChangePaymentMethodDto = z.infer<typeof changePaymentMethodDto>;
+export type ChangeTransferInnDto = z.infer<typeof changeTransferInnDto>;
 export type SendToFinanceDto = z.infer<typeof sendToFinanceDto>;
 export type ShipmentDto = z.infer<typeof shipmentDto>;
 export type FinanceRejectDto = z.infer<typeof financeRejectDto>;
