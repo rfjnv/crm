@@ -313,6 +313,8 @@ model User {
   badgeLabel          String?          @map("badge_label")
   clientNotes         ClientNote[]
   productFeedbackAuthored ProductFeedback[] @relation("ProductFeedbackAuthor")
+  clientRequestsAuthored ClientRequest[] @relation("ClientRequestAuthor")
+  clientRequestsClosed ClientRequest[] @relation("ClientRequestCloser")
   clientStockEventsAuthored ClientStockEvent[] @relation("ClientStockEventAuthor")
   loadingAssignments  Deal[]           @relation("DealLoadingAssignee")
   deliveryAssignments Deal[]           @relation("DealDeliveryDriver")
@@ -541,6 +543,7 @@ model Client {
   clientNotes ClientNote[]
   notesBoardRows NotesBoardRow[]
   productFeedback ProductFeedback[]
+  clientRequests ClientRequest[]
   stockPositions ClientStockPosition[]
   stockEvents ClientStockEvent[]
   reservations ProductReservation[]
@@ -893,6 +896,7 @@ model Product {
   posterPhotos ProductPosterPhoto[]
   reservations ProductReservation[]
   feedback  ProductFeedback[]
+  clientRequests ClientRequest[]
 
   paymentRequestItems PaymentRequestItem[]
   @@index([category])
@@ -1445,6 +1449,40 @@ model ProductFeedback {
   @@index([productId, createdAt])
   @@index([clientId, createdAt])
   @@map("product_feedback")
+}
+
+/// Запрос клиента: чего он хочет — товар (из каталога или которого у нас нет) или что-то другое.
+model ClientRequest {
+  id          String    @id @default(uuid())
+  clientId    String    @map("client_id")
+  /// PRODUCT — хочет товар, OTHER — другое (условия, доставка, услуга…)
+  kind        String    @default("PRODUCT")
+  productId   String?   @map("product_id")
+  /// Название товара, если его нет в каталоге
+  productName String?   @map("product_name")
+  quantity    Decimal?  @db.Decimal(12, 3)
+  unit        String?
+  description String?   @db.Text
+  /// NEW | IN_PROGRESS | DONE | REJECTED
+  status      String    @default("NEW")
+  /// Чем закончилось: «привезли», «предложили аналог», «не нашли»…
+  resolution  String?   @db.Text
+  dueDate     DateTime? @map("due_date")
+  authorId    String    @map("author_id")
+  closedById  String?   @map("closed_by_id")
+  closedAt    DateTime? @map("closed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  product  Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  author   User     @relation("ClientRequestAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  closedBy User?    @relation("ClientRequestCloser", fields: [closedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([clientId, createdAt])
+  @@index([productId])
+  @@map("client_requests")
 }
 
 model NotesBoardRow {

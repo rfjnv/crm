@@ -413,6 +413,13 @@ export default function Layout() {
         label: <Link to="/product-feedback">Обзвон по товару</Link>,
       }]
       : []),
+    ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'FOREIGN_TRADE')
+      ? [{
+        key: '/client-requests',
+        icon: <BulbOutlined />,
+        label: <Link to="/client-requests">Запросы клиентов</Link>,
+      }]
+      : []),
     ...(hasRole('SUPER_ADMIN', 'ADMIN', 'MANAGER') || hasPermission('use_rop_agent')
       ? [{
         key: '/calls',

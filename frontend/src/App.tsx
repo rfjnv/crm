@@ -88,6 +88,7 @@ const MarketAnalysisPage = lazy(() => import('./pages/MarketAnalysisPage'));
 const CategoryAnalysisPage = lazy(() => import('./pages/CategoryAnalysisPage'));
 const ReviewsPage = lazy(() => import('./pages/ReviewsPage'));
 const ProductFeedbackPage = lazy(() => import('./pages/ProductFeedbackPage'));
+const ClientRequestsPage = lazy(() => import('./pages/ClientRequestsPage'));
 const WarehouseManagerPage = lazy(() => import('./pages/WarehouseManagerPage'));
 const MyLoadingTasksPage = lazy(() => import('./pages/MyLoadingTasksPage'));
 const MyVehiclePage = lazy(() => import('./pages/MyVehiclePage'));
@@ -344,6 +345,7 @@ export default function App() {
                 <Route path="/my-vehicle" element={<MyVehiclePage />} />
                 <Route path="/delivery-route" element={<DeliveryRoutePage />} />
                 <Route element={<PrivateRoute roles={['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'HR', 'FOREIGN_TRADE']} />}>
+                  <Route path="/client-requests" element={<ClientRequestsPage />} />
                   <Route path="/ai-assistant" element={<MoneyAccessGuard text={AI_ACCESS_TEXT}><AiAssistantPage /></MoneyAccessGuard>} />
                   <Route path="/ai-assistant/training" element={<MoneyAccessGuard text={AI_ACCESS_TEXT}><AiTrainingPage /></MoneyAccessGuard>} />
                   <Route path="/ai-assistant/transcribe" element={<MoneyAccessGuard text={AI_ACCESS_TEXT}><AudioTranscriptionPage /></MoneyAccessGuard>} />
