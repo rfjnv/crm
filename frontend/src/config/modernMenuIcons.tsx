@@ -124,6 +124,7 @@ const ICON_BY_KEY: Record<string, Icon> = {
   '/history-analytics': ClockCounterClockwise,
   '/analytics/market': ChartLineUp,
   '/analytics/categories': SquaresFour,
+  '/analytics/category-orders': ChartLineUp,
   '/analytics/department-report': Presentation,
   '/profile': IdentificationCard,
   '/changelog': Newspaper,

@@ -29,6 +29,7 @@ import { laminationKgUsageRoutes } from './modules/analytics/lamination-kg-usage
 import { paymentOverdueRoutes } from './modules/analytics/payment-overdue.routes';
 import { abcXyzRoutes } from './modules/analytics/abcXyz.routes';
 import { categoryAnalysisRoutes } from './modules/analytics/category-analysis.routes';
+import { categoryOrdersRoutes } from './modules/analytics/category-orders.routes';
 import { cohortsRoutes } from './modules/analytics/cohorts.routes';
 import { noteAuditRoutes } from './modules/analytics/note-audit.routes';
 import { managerKpiRoutes } from './modules/analytics/manager-kpi.routes';
@@ -239,6 +240,7 @@ app.use('/api/analytics/lamination-kg-usage', laminationKgUsageRoutes);
 app.use('/api/analytics/payment-overdue', paymentOverdueRoutes);
 app.use('/api/analytics/abc-xyz', abcXyzRoutes);
 app.use('/api/analytics/category-analysis', categoryAnalysisRoutes);
+app.use('/api/analytics/category-orders', categoryOrdersRoutes);
 app.use('/api/analytics/cohorts', cohortsRoutes);
 app.use('/api/analytics/note-audit', noteAuditRoutes);
 app.use('/api/analytics/manager-kpi', managerKpiRoutes);

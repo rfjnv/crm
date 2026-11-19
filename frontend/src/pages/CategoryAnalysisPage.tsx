@@ -472,6 +472,8 @@ export default function CategoryAnalysisPage() {
                 : 'Анализ категорий'}
             </Title>
             <Text type="secondary">{rangeText}</Text>
+            {' · '}
+            <Link to={`/analytics/category-orders${category ? `?category=${encodeURIComponent(category)}` : ''}`}>Заказы и продажи по месяцам</Link>
           </div>
         </div>
         <div className="cat-controls">

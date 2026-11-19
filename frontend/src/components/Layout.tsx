@@ -832,6 +832,11 @@ export default function Layout() {
               icon: <AppstoreOutlined />,
               label: <Link to="/analytics/categories">Анализ категорий</Link>,
             },
+            {
+              key: '/analytics/category-orders',
+              icon: <AppstoreOutlined />,
+              label: <Link to="/analytics/category-orders">Заказы и продажи</Link>,
+            },
           ]
           : []),
         ...(hasRole('SUPER_ADMIN', 'ADMIN') || hasPermission('view_market_analysis')
