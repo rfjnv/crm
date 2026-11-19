@@ -1,4 +1,4 @@
-export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo' | 'Poytaxt Group' | 'Mars Paper' | 'Poli Text';
+export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo' | 'Poytaxt Group' | 'Mars Paper' | 'Poli Text' | 'Al-Zuben';
 
 export type TheirOnlyRow = {
   key: string;
@@ -130,6 +130,24 @@ const THEIR_ONLY_RAW: Array<Omit<TheirOnlyRow, 'key'>> = [
   { competitor: 'Poli Text', category: 'Офсетные пластины', name: 'Пустая пластина 485×400×0,15', price: 18000 },
   { competitor: 'Poli Text', category: 'Офсетные пластины', name: 'Пустая пластина 490×370×0,15', price: 16000 },
   { competitor: 'Poli Text', category: 'Офсетные пластины', name: 'Пустая пластина 475×460×0,30', price: 25000 },
+  { competitor: 'Al-Zuben', category: 'Бумага для цифровой печати', name: 'Xerox Colotech Plus 90–350 г, A4 / A3 / SRA3 (за пачку, от)', price: 169680 },
+  { competitor: 'Al-Zuben', category: 'Бумага для цифровой печати', name: 'Clairefontaine DCP матовая 90–400 г, A4 / A3 / SRA3 (за пачку, от)', price: 113792 },
+  { competitor: 'Al-Zuben', category: 'Бумага для цифровой печати', name: 'Clairefontaine DCP Gloss 135–250 г (за пачку, от)', price: 163744 },
+  { competitor: 'Al-Zuben', category: 'Бумага для цифровой печати', name: 'UPM Digi Finesse Gloss / Premium Silk 115–350 г, SRA3 (за пачку, от)', price: 227024 },
+  { competitor: 'Al-Zuben', category: 'Бумага для цифровой печати', name: 'Xerox Colour Impressions Gloss / Silk 100–300 г, SRA3 (за пачку, от)', price: 349440 },
+  { competitor: 'Al-Zuben', category: 'Дизайнерская бумага', name: 'Дизайнерская бумага Neenah, Fedrigoni, Cordenons, Favini (Stardream, Dali, Malmero, Touché и др.), за лист, от', price: 2912 },
+  { competitor: 'Al-Zuben', category: 'Дизайнерский картон', name: 'Neenah Folding board 392–433 г, 71×102 (за лист, от)', price: 37632 },
+  { competitor: 'Al-Zuben', category: 'Дизайнерский картон', name: 'Металлизированный картон Kernow 300–330 г, SRA3 (за лист, от)', price: 12656 },
+  { competitor: 'Al-Zuben', category: 'Переплетные материалы', name: 'Переплётный картон Eskaboard 1,5 / 2,0 мм, 105×92 (за лист, от)', price: 34944 },
+  { competitor: 'Al-Zuben', category: 'Переплетные материалы', name: 'Искусственная кожа Muse Thermo PU 1,40 м / флок Patina 1,04 м (за пог. метр, от)', price: 86352 },
+  { competitor: 'Al-Zuben', category: 'Самоклеящаяся бумага', name: 'Самоклейка UPM Raflatac для лазерной печати (Laserfine, Laser Gloss, Fluor, Vellum), SRA3 (за лист, от)', price: 2912 },
+  { competitor: 'Al-Zuben', category: 'Самоклеящаяся бумага', name: 'Самоклеящиеся плёнки Polylaser, NeverTear, Kernow, SRA3 (за лист, от)', price: 14112 },
+  { competitor: 'Al-Zuben', category: 'Бумага и картон', name: 'Офисная бумага UPM Future Multi / Premium 80 г, A4 (за пачку, от)', price: 71344 },
+  { competitor: 'Al-Zuben', category: 'Бумага и картон', name: 'Цветная бумага Clairefontaine Trophee, Xerox Symphony 80–160 г (за пачку, от)', price: 100016 },
+  { competitor: 'Al-Zuben', category: 'Бумага и картон', name: 'Калька Reflex 60–320 г, 65×92 / Fedrigoni Kristal 160 г, 72×102 (за лист, от)', price: 11984 },
+  { competitor: 'Al-Zuben', category: 'Бумага и картон', name: 'Рулонная бумага для плоттеров Evolution / Xerox 75–90 г (за рулон, от)', price: 101920 },
+  { competitor: 'Al-Zuben', category: 'Бумага и картон', name: 'Конверты из дизайнерской бумаги, Clairefontaine (за шт, от)', price: 370 },
+  { competitor: 'Al-Zuben', category: 'Бумага и картон', name: 'Синтетические плёнки Kernow для лазерной печати 100–404 мкм, SRA3 (за лист, от)', price: 10640 },
 ];
 
 const OUR_ONLY_RAW: Array<Omit<OurOnlyRow, 'key'>> = [

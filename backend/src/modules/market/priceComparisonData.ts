@@ -3,7 +3,7 @@
 
 export type MatchType = 'Точное' | 'Потенциальное';
 
-export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo' | 'Poytaxt Group' | 'Mars Paper' | 'Poli Text';
+export type Competitor = 'Yann' | 'Bit Trade' | 'Avanta Trade' | 'Foil Trading' | 'Paper World' | 'AVA-TEN' | 'Alfa Karton Savdo' | 'Poytaxt Group' | 'Mars Paper' | 'Poli Text' | 'Al-Zuben';
 
 export type PriceRow = {
   key: string;
@@ -196,4 +196,5 @@ export const PRICE_ROWS: PriceRow[] = [
   { key: "177", category: "Офсетные пластины", ourProduct: "Офсетная пластина CTP 745×605 (0,30)", competitorProduct: "Пустая пластина 745×605×0,30", competitor: "Poli Text" as Competitor, ourPrice: 28000, competitorPrice: 35000, matchType: "Потенциальное" as MatchType },
   { key: "178", category: "Офсетные пластины", ourProduct: "Офсетная пластина CTCP 650×550 (0,30)", competitorProduct: "Пустая пластина 650×550×0,30", competitor: "Poli Text" as Competitor, ourPrice: 32000, competitorPrice: 28000, matchType: "Потенциальное" as MatchType },
   { key: "179", category: "Офсетные пластины", ourProduct: "Офсетная пластина CTCP 450×370 (0,15)", competitorProduct: "Пустая пластина 450×370×0,15", competitor: "Poli Text" as Competitor, ourPrice: 18000, competitorPrice: 15000, matchType: "Потенциальное" as MatchType },
+  { key: "180", category: "Самоклеящаяся бумага", ourProduct: "с насечкой (Китай), глянец, 70×100", competitorProduct: "UPM Raflatac UNICOAT (ЕС) белая глянцевая, 179 г, 70×100", competitor: "Al-Zuben" as Competitor, ourPrice: 4000, competitorPrice: 10080, matchType: "Потенциальное" as MatchType },
 ];

@@ -28,6 +28,7 @@ tr:hover td { background: var(--color-background-secondary); }
 .badge-poytaxt { background: #EFE8FA; color: #46237A; }
 .badge-mars { background: #E6ECFB; color: #1D3A7A; }
 .badge-polit { background: #E3F4F6; color: #11535C; }
+.badge-alzub { background: #F1F6E3; color: #3F5A12; }
 @media (prefers-color-scheme: dark) {
   .badge-yann { background: #0C447C; color: #B5D4F4; }
   .badge-bit { background: #27500A; color: #C0DD97; }
@@ -39,6 +40,7 @@ tr:hover td { background: var(--color-background-secondary); }
   .badge-poytaxt { background: #46237A; color: #DCCDF5; }
   .badge-mars { background: #1D3A7A; color: #C9D6F7; }
   .badge-polit { background: #11535C; color: #C4EBF0; }
+  .badge-alzub { background: #3F5A12; color: #E1F0C4; }
 }
 .cheaper { color: #0F6E56; font-weight: 500; }
 .pricier { color: #A32D2D; font-weight: 500; }
@@ -265,9 +267,10 @@ const data = [
   {cat:"Офсетные пластины", us:"Офсетная пластина CTP 745×605 (0,30)", them:"Пустая пластина 745×605×0,30", comp:"Poli Text", usp:28000, theirp:35000, type:"Потенциальное"},
   {cat:"Офсетные пластины", us:"Офсетная пластина CTCP 650×550 (0,30)", them:"Пустая пластина 650×550×0,30", comp:"Poli Text", usp:32000, theirp:28000, type:"Потенциальное"},
   {cat:"Офсетные пластины", us:"Офсетная пластина CTCP 450×370 (0,15)", them:"Пустая пластина 450×370×0,15", comp:"Poli Text", usp:18000, theirp:15000, type:"Потенциальное"},
+  {cat:"Самоклеящаяся бумага", us:"с насечкой (Китай), глянец, 70×100", them:"UPM Raflatac UNICOAT (ЕС) белая глянцевая, 179 г, 70×100", comp:"Al-Zuben", usp:4000, theirp:10080, type:"Потенциальное"},
 ];
 
-const compColors = {Yann:'badge-yann','Bit Trade':'badge-bit','Avanta Trade':'badge-avanta','Foil Trading':'badge-foil','Paper World':'badge-pw','AVA-TEN':'badge-avaten','Alfa Karton Savdo':'badge-alfa','Poytaxt Group':'badge-poytaxt','Mars Paper':'badge-mars','Poli Text':'badge-polit'};
+const compColors = {Yann:'badge-yann','Bit Trade':'badge-bit','Avanta Trade':'badge-avanta','Foil Trading':'badge-foil','Paper World':'badge-pw','AVA-TEN':'badge-avaten','Alfa Karton Savdo':'badge-alfa','Poytaxt Group':'badge-poytaxt','Mars Paper':'badge-mars','Poli Text':'badge-polit','Al-Zuben':'badge-alzub'};
 const cats = [...new Set(data.map(d=>d.cat))];
 const comps = [...new Set(data.map(d=>d.comp))];
 let activeComp = 'all', activeCat = 'all', searchQ = '';

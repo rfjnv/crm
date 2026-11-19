@@ -28,4 +28,5 @@ export const COMPETITOR_PRICE_DATES: CompetitorPriceDate[] = [
   { competitor: 'Poytaxt Group', date: '2026-10-19', scope: 'картон и лайнеры' },
   { competitor: 'Mars Paper', date: '2026-11-01', note: 'прайс «Ноябрь 2026»' },
   { competitor: 'Poli Text', date: '2026-11-18', scope: 'пустые пластины', note: 'дата в прайсе не указана — день получения' },
+  { competitor: 'Al-Zuben', date: '2026-10-26', scope: 'дизайнерская и цифровая бумага', note: 'оптовые цены с НДС (опт от 3 млн сум)' },
 ];
