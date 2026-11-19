@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Alert, Badge, Button, Card, Input, Select, Space, Spin, Table, Tabs, Tag, Tooltip, Typography, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import BackButton from '../components/BackButton';
+import MarketMatrixTab from '../components/MarketMatrixTab';
 import { useIsMobile } from '../hooks/useIsMobile';
 import {
   marketApi,
@@ -1263,6 +1264,11 @@ export default function MarketAnalysisPage() {
         activeKey={activeTab}
         onChange={setActiveTab}
         items={[
+          {
+            key: 'matrix',
+            label: 'Матрица компаний',
+            children: <MarketMatrixTab market={market} competitorColor={competitorColor} />,
+          },
           {
             key: 'competitors',
             label: `Товары конкурентов (${market.priceRows.length + market.theirOnly.length})`,
