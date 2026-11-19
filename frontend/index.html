@@ -49,48 +49,134 @@
   -->
   <script>
     (function () {
-      var TIMEOUT_MS = 15000;
+      // Первая проверка. На медленной сети (бандл ~430 КБ сжатым) это не приговор:
+      // пока скрипт ещё качается, показываем «грузится», а не «браузер старый».
+      var FIRST_CHECK_MS = 15000;
+      var RECHECK_MS = 3000;
+      // Сколько ждать после окончания загрузки страницы, прежде чем считать, что код не запустился.
+      var AFTER_LOAD_GRACE_MS = 5000;
+      // Совсем потолок: дольше ждать нет смысла даже на очень плохой связи.
+      var GIVE_UP_MS = 120000;
+
+      var startedAt = Date.now();
+      var loadedAt = document.readyState === 'complete' ? Date.now() : 0;
+      var lastError = '';
+      var scriptFailed = false;
 
       window.__crmBooted = false;
+      window.addEventListener('load', function () { loadedAt = Date.now(); });
 
-      function report(reason) {
+      function appRendered() {
+        var root = document.getElementById('root');
+        if (!root) return false;
+        for (var i = 0; i < root.children.length; i++) {
+          var id = root.children[i].id;
+          if (id !== 'crm-boot-error' && id !== 'crm-boot-slow') return true;
+        }
+        return false;
+      }
+
+      function clearBoxes() {
+        var ids = ['crm-boot-error', 'crm-boot-slow'];
+        for (var i = 0; i < ids.length; i++) {
+          var el = document.getElementById(ids[i]);
+          if (el && el.parentNode) el.parentNode.removeChild(el);
+        }
+      }
+
+      function showSlow() {
+        if (document.getElementById('crm-boot-slow')) return;
+        var root = document.getElementById('root');
+        if (!root) return;
+        var box = document.createElement('div');
+        box.id = 'crm-boot-slow';
+        box.style.cssText = 'padding:20px 16px;font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#595959';
+        box.innerHTML =
+          '<h2 style="margin:0 0 8px;font-size:17px;color:#1f1f1f">Загружаем приложение…</h2>'
+          + '<p style="margin:0">Медленное соединение — это может занять до минуты. Страницу закрывать не нужно.</p>';
+        root.appendChild(box);
+      }
+
+      function report(reason, hint) {
         var root = document.getElementById('root');
         // Что-то отрисовано — приложение живо, вмешиваться не нужно.
-        if (!root || root.childElementCount > 0) return;
+        if (!root || appRendered()) return;
         if (document.getElementById('crm-boot-error')) return;
+        clearBoxes();
 
         var box = document.createElement('div');
         box.id = 'crm-boot-error';
         box.style.cssText = 'padding:20px 16px;font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#1f1f1f';
         box.innerHTML =
           '<h2 style="margin:0 0 8px;font-size:17px;color:#cf1322">Приложение не загрузилось</h2>'
-          + '<p style="margin:0 0 12px;color:#595959">Похоже, браузер на этом устройстве слишком старый. Покажите этот текст разработчику.</p>'
+          + '<p id="crm-boot-hint" style="margin:0 0 12px;color:#595959"></p>'
           + '<pre id="crm-boot-detail" style="margin:0 0 16px;padding:12px;background:#f5f5f5;border-radius:8px;'
           + 'white-space:pre-wrap;word-break:break-word;font-size:12px"></pre>'
           + '<button type="button" style="padding:10px 18px;border:0;border-radius:8px;background:#22609A;color:#fff;font-size:15px"'
           + ' onclick="window.location.reload()">Обновить страницу</button>';
         root.appendChild(box);
 
+        document.getElementById('crm-boot-hint').textContent = hint + ' Если не поможет — покажите этот текст разработчику.';
         document.getElementById('crm-boot-detail').textContent =
           'Причина: ' + reason + '\n'
+          + (lastError ? 'Ошибка: ' + lastError + '\n' : '')
           // Ключевое различие: код приложения не запустился вовсе (движок не понял
           // бандл) или запустился, но не отрисовал ни одного элемента.
           + 'Код приложения выполнился: ' + (window.__crmBooted ? 'да' : 'НЕТ') + '\n'
+          + 'Страница догрузилась: ' + (loadedAt ? 'да' : 'нет') + '\n'
+          + 'Прошло: ' + Math.round((Date.now() - startedAt) / 1000) + ' с\n'
           + 'Адрес: ' + window.location.href + '\n'
-          + 'Telegram Web App: ' + (window.Telegram && window.Telegram.WebApp ? 'да' : 'нет') + '\n'
+          + 'Telegram Web App: ' + (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData ? 'да' : 'нет') + '\n'
           + 'Браузер: ' + navigator.userAgent;
       }
 
-      // Не удалось даже загрузить/разобрать бандл — самый частый случай на старых WebView.
+      function check() {
+        if (appRendered()) { clearBoxes(); return; }
+        var waited = Date.now() - startedAt;
+
+        if (scriptFailed) {
+          report('скрипт приложения не загрузился', 'Похоже, оборвалось соединение. Проверьте интернет и обновите страницу.');
+          return;
+        }
+        if (window.__crmBooted) {
+          report('код запустился, но экран остался пустым', 'Попробуйте обновить страницу.');
+          return;
+        }
+        // Бандл ещё качается — это медленная сеть, а не старый браузер.
+        if (!loadedAt) {
+          if (waited >= GIVE_UP_MS) {
+            report('за ' + Math.round(waited / 1000) + ' с приложение так и не скачалось',
+              'Очень медленное соединение. Проверьте интернет и обновите страницу.');
+            return;
+          }
+          showSlow();
+          setTimeout(check, RECHECK_MS);
+          return;
+        }
+        // Всё скачано, но код так и не запустился — вот тогда виноват движок.
+        if (Date.now() - loadedAt < AFTER_LOAD_GRACE_MS) {
+          setTimeout(check, RECHECK_MS);
+          return;
+        }
+        report('приложение скачалось, но не запустилось', 'Похоже, браузер на этом устройстве слишком старый.');
+      }
+
       window.addEventListener('error', function (event) {
-        if (event.target && event.target.tagName === 'SCRIPT') {
-          report('скрипт приложения не загрузился');
+        var t = event.target;
+        if (t && t.tagName === 'SCRIPT') {
+          // Сторонний скрипт (Telegram SDK) не наш — из-за него приложение не ломается.
+          if ((t.src || '').indexOf(window.location.origin) === 0) {
+            scriptFailed = true;
+            check();
+          }
         } else if (event.message) {
-          report(event.message);
+          // Не показываем сразу: чужая ошибка во время загрузки ещё не значит, что приложение не встанет.
+          // Запоминаем и выводим, если в итоге экран останется пустым.
+          lastError = String(event.message);
         }
       }, true);
 
-      setTimeout(function () { report('за ' + (TIMEOUT_MS / 1000) + ' с приложение не отрисовалось'); }, TIMEOUT_MS);
+      setTimeout(check, FIRST_CHECK_MS);
     })();
   </script>
 
